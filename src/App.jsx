@@ -1754,6 +1754,7 @@ ${anime.map(animeEntry).join("\n")}
           lists={lists}
           onToggleInList={toggleInList}
           onCheckConflict={entryConflictsWithSeries}
+          currentUser={currentUser}
         />
       )}
 

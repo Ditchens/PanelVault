@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { supabase } from "../lib/supabase";
 import {
   STATUS_OPTIONS,
   COMICS_TYPE_OPTIONS,
@@ -44,6 +45,7 @@ export default function SeriesModal({
   lists,
   onToggleInList,
   onCheckConflict,
+  currentUser,
 }) {
   const [detailMode, setDetailMode] = useState("info");
   const [editTitle, setEditTitle] = useState("");
@@ -61,6 +63,9 @@ export default function SeriesModal({
   const [editNotes, setEditNotes] = useState("");
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef(null);
 
   // Sync edit state whenever the viewed item changes
   useEffect(() => {
@@ -129,6 +134,32 @@ export default function SeriesModal({
       saveNote(selectedItem.id, editNotes);
       setDetailMode("info");
     }
+  }
+
+  async function uploadCover(file) {
+    if (!supabase || !currentUser) return;
+    if (!file.type.startsWith("image/")) { setUploadError("Please select an image file."); return; }
+    if (file.size > 5 * 1024 * 1024) { setUploadError("Image must be under 5 MB."); return; }
+
+    setIsUploading(true);
+    setUploadError("");
+
+    const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    const path = `${currentUser.id}/${selectedItem.id}-${Date.now()}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from("covers")
+      .upload(path, file, { upsert: true, contentType: file.type });
+
+    if (error) {
+      setUploadError("Upload failed: " + error.message);
+      setIsUploading(false);
+      return;
+    }
+
+    const { data } = supabase.storage.from("covers").getPublicUrl(path);
+    setEditImage(data.publicUrl);
+    setIsUploading(false);
   }
 
   function toggleTag(tag) {
@@ -381,13 +412,36 @@ export default function SeriesModal({
               style={s.textarea}
             />
 
-            <label style={s.label}>Cover URL</label>
+            <label style={s.label}>Cover</label>
             <input
               value={editImage}
               onChange={(e) => setEditImage(e.target.value)}
-              placeholder="Paste a new cover URL"
+              placeholder="Paste a cover URL…"
               style={s.input}
             />
+            <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadCover(file);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => { setUploadError(""); fileInputRef.current?.click(); }}
+                disabled={isUploading || !currentUser || !supabase}
+                style={{ ...s.uploadBtn, opacity: isUploading || !currentUser ? 0.6 : 1 }}
+              >
+                {isUploading ? "Uploading…" : "Upload Image"}
+              </button>
+              {!currentUser && <span style={s.uploadHint}>Sign in to upload</span>}
+              {uploadError && <span style={s.uploadErrMsg}>{uploadError}</span>}
+            </div>
 
             <label style={s.label}>Type</label>
             <select value={editType} onChange={(e) => setEditType(e.target.value)} style={s.input}>
@@ -764,6 +818,19 @@ const s = {
     fontWeight: 700,
     cursor: "pointer",
   },
+  uploadBtn: {
+    background: "rgba(99,102,241,0.15)",
+    border: "1px solid rgba(99,102,241,0.3)",
+    borderRadius: 10,
+    color: "#a5b4fc",
+    fontSize: "0.85rem",
+    fontWeight: 700,
+    padding: "8px 14px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  uploadHint: { fontSize: "0.8rem", color: "#64748b" },
+  uploadErrMsg: { fontSize: "0.8rem", color: "#f87171", fontWeight: 600 },
   saveError: {
     margin: "12px 0 0",
     padding: "10px 14px",
