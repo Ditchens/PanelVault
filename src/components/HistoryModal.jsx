@@ -1,7 +1,9 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { ACTIVITY_KEY } from "./SettingsModal";
 
 export default function HistoryModal({ onClose }) {
+  const [calView, setCalView] = useState(false);
+  const [calOffset, setCalOffset] = useState(0); // 0 = current month, -1 = last month, etc.
   const activityLog = useMemo(() => {
     try { return JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]"); } catch { return []; }
   }, []);
@@ -46,6 +48,29 @@ export default function HistoryModal({ onClose }) {
   }, [activityLog]);
 
   const maxHeat = Math.max(...heatmap.map((d) => d.count), 1);
+
+  // Calendar month data
+  const calendarData = useMemo(() => {
+    const now = new Date();
+    now.setDate(1);
+    now.setMonth(now.getMonth() + calOffset);
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const label = now.toLocaleDateString("en", { month: "long", year: "numeric" });
+    const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+    // leading empty cells
+    for (let i = 0; i < firstDay; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const count = activityLog
+        .filter((e) => e.date === date)
+        .reduce((s, e) => s + (e.delta || 1), 0);
+      cells.push({ date, d, count });
+    }
+    return { label, cells };
+  }, [activityLog, calOffset]);
 
   function heatColor(count) {
     if (!count) return "rgba(255,255,255,0.05)";
@@ -96,19 +121,69 @@ export default function HistoryModal({ onClose }) {
           </div>
         </div>
 
-        {/* 30-day heatmap */}
+        {/* Heatmap / Calendar toggle */}
         {activityLog.length > 0 && (
           <div>
-            <p style={s.sectionTitle}>Last 30 days</p>
-            <div style={s.heatmap}>
-              {heatmap.map((day) => (
-                <div
-                  key={day.date}
-                  title={`${day.date}: ${day.count} progress`}
-                  style={{ ...s.heatCell, background: heatColor(day.count) }}
-                />
-              ))}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <p style={{ ...s.sectionTitle, margin: 0 }}>
+                {calView ? calendarData.label : "Last 30 days"}
+              </p>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {calView && (
+                  <>
+                    <button onClick={() => setCalOffset((o) => o - 1)} style={s.calNav}>‹</button>
+                    <button onClick={() => setCalOffset((o) => Math.min(0, o + 1))} style={s.calNav} disabled={calOffset === 0}>›</button>
+                  </>
+                )}
+                <button onClick={() => setCalView((v) => !v)} style={s.viewToggle}>
+                  {calView ? "Heatmap" : "Calendar"}
+                </button>
+              </div>
             </div>
+
+            {!calView && (
+              <div style={s.heatmap}>
+                {heatmap.map((day) => (
+                  <div
+                    key={day.date}
+                    title={`${day.date}: ${day.count}`}
+                    style={{ ...s.heatCell, background: heatColor(day.count) }}
+                  />
+                ))}
+              </div>
+            )}
+
+            {calView && (
+              <div>
+                <div style={s.calDayRow}>
+                  {["Su","Mo","Tu","We","Th","Fr","Sa"].map((d) => (
+                    <div key={d} style={s.calDayLabel}>{d}</div>
+                  ))}
+                </div>
+                <div style={s.calGrid}>
+                  {calendarData.cells.map((cell, i) => {
+                    if (!cell) return <div key={`empty-${i}`} />;
+                    const today = new Date().toISOString().split("T")[0];
+                    const isToday = cell.date === today;
+                    return (
+                      <div
+                        key={cell.date}
+                        title={cell.count ? `${cell.count} progress` : ""}
+                        style={{
+                          ...s.calCell,
+                          background: cell.count ? heatColor(cell.count) : "rgba(255,255,255,0.03)",
+                          outline: isToday ? "2px solid #6366f1" : "none",
+                          color: cell.count ? "#f8fafc" : "#475569",
+                          fontWeight: isToday ? 800 : 600,
+                        }}
+                      >
+                        {cell.d}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -177,6 +252,31 @@ const s = {
   heatCell: {
     aspectRatio: "1", borderRadius: 4, cursor: "default",
     transition: "opacity 0.15s",
+  },
+  viewToggle: {
+    background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.25)",
+    borderRadius: 8, color: "#a5b4fc", fontSize: "0.78rem", fontWeight: 700,
+    padding: "5px 10px", cursor: "pointer",
+  },
+  calNav: {
+    background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 8, color: "#94a3b8", fontSize: "1rem", fontWeight: 700,
+    padding: "3px 8px", cursor: "pointer",
+  },
+  calDayRow: {
+    display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 4,
+  },
+  calDayLabel: {
+    textAlign: "center", fontSize: "0.65rem", fontWeight: 800,
+    color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em",
+  },
+  calGrid: {
+    display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3,
+  },
+  calCell: {
+    aspectRatio: "1", borderRadius: 6, display: "flex",
+    alignItems: "center", justifyContent: "center",
+    fontSize: "0.75rem", transition: "background 0.15s",
   },
   timeline: { display: "flex", flexDirection: "column", gap: 16 },
   dayGroup: { display: "flex", flexDirection: "column", gap: 6 },

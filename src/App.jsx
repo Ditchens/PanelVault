@@ -88,6 +88,10 @@ export default function PanelVaultApp() {
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [bulkSelectMode, setBulkSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [favoriteIds, setFavoriteIds] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("panelvault_favorites") || "[]")); }
+    catch { return new Set(); }
+  });
   const [activeMainView, setActiveMainView] = useState("home"); // "home" | "library"
   const [activeBottomTab, setActiveBottomTab] = useState("home"); // mobile nav
 
@@ -386,7 +390,7 @@ export default function PanelVaultApp() {
           : true,
       currentProgress: typeof row.current_progress === "number" ? row.current_progress : 0,
       totalProgress: typeof row.total_progress === "number" ? row.total_progress : null,
-      rating: typeof row.rating === "number" ? row.rating : null,
+      rating: row.rating != null ? Number(row.rating) : null,
       createdAt:
         typeof row.created_at === "string"
           ? new Date(row.created_at).getTime()
@@ -704,6 +708,16 @@ export default function PanelVaultApp() {
     setSelectedIds(new Set());
   }
 
+  function toggleFavorite(id, e) {
+    e.stopPropagation();
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      localStorage.setItem("panelvault_favorites", JSON.stringify([...next]));
+      return next;
+    });
+  }
+
   // ── Discover ──────────────────────────────────────────────────────────────
 
   async function addFromDiscover(seriesData) {
@@ -765,6 +779,7 @@ export default function PanelVaultApp() {
     const cat = series.filter((i) => (i.mediaCategory || "comics") === activeMediaCategory);
     if (statusKey === "all")         return cat.length;
     if (statusKey === "needsReview") return cat.filter((i) => i.needsReview).length;
+    if (statusKey === "favorites")   return cat.filter((i) => favoriteIds.has(i.id)).length;
     return cat.filter((i) => i.status === statusKey).length;
   }
 
@@ -790,6 +805,8 @@ export default function PanelVaultApp() {
       if (activeStatus !== "all") {
         if (activeStatus === "needsReview") {
           filtered = filtered.filter((item) => item.needsReview);
+        } else if (activeStatus === "favorites") {
+          filtered = filtered.filter((item) => favoriteIds.has(item.id));
         } else {
           filtered = filtered.filter((item) => item.status === activeStatus);
         }
@@ -813,6 +830,7 @@ export default function PanelVaultApp() {
       if (sortOption === "az")     return a.title.localeCompare(b.title);
       if (sortOption === "za")     return b.title.localeCompare(a.title);
       if (sortOption === "oldest") return (a.createdAt || 0) - (b.createdAt || 0);
+      if (sortOption === "rating") return (b.rating ?? -1) - (a.rating ?? -1);
       return (b.createdAt || 0) - (a.createdAt || 0);
     });
   }, [series, activeMediaCategory, activeStatus, activeType, activeTag, searchTerm, sortOption, activeListId, lists]);
@@ -1055,7 +1073,7 @@ ${anime.map(animeEntry).join("\n")}
 
               <div style={st.menuSectionLabel}>Library Views</div>
 
-              {STATUS_OPTIONS.map((view) => {
+              {[...STATUS_OPTIONS, { key: "favorites", label: "★ Favorites" }].map((view) => {
                 const active = activeMainView === "library" && !activeListId && activeStatus === view.key;
                 return (
                   <button
@@ -1342,6 +1360,13 @@ ${anime.map(animeEntry).join("\n")}
                 </button>
               );
             })}
+            <button
+              onClick={() => setActiveStatus(activeStatus === "favorites" ? "all" : "favorites")}
+              style={{ ...st.mobileStatusBtn, ...(activeStatus === "favorites" ? st.mobileStatusBtnActive : {}) }}
+            >
+              ★ Fav
+              <span style={st.mobileStatusCount}>{getCountByStatus("favorites")}</span>
+            </button>
           </div>
         )}
 
@@ -1409,6 +1434,7 @@ ${anime.map(animeEntry).join("\n")}
                 <option value="oldest">Oldest</option>
                 <option value="az">A–Z</option>
                 <option value="za">Z–A</option>
+                <option value="rating">Top Rated</option>
               </select>
             </div>
 
@@ -1520,6 +1546,33 @@ ${anime.map(animeEntry).join("\n")}
 
                         {item.rating != null && (
                           <div style={st.ratingBadge}>★ {item.rating}</div>
+                        )}
+
+                        {/* Progress bar */}
+                        {item.totalProgress > 0 && item.currentProgress > 0 && (
+                          <div style={st.cardProgressBar}>
+                            <div style={{
+                              ...st.cardProgressFill,
+                              width: `${Math.min(100, (item.currentProgress / item.totalProgress) * 100)}%`,
+                              background: item.currentProgress >= item.totalProgress
+                                ? "linear-gradient(90deg,#22c55e,#4ade80)"
+                                : "linear-gradient(90deg,#6366f1,#8b5cf6)",
+                            }} />
+                          </div>
+                        )}
+
+                        {/* Star / favourite */}
+                        {!bulkSelectMode && (
+                          <button
+                            style={{
+                              ...st.starBtn,
+                              color: favoriteIds.has(item.id) ? "#fbbf24" : "rgba(255,255,255,0.25)",
+                            }}
+                            onClick={(e) => toggleFavorite(item.id, e)}
+                            title={favoriteIds.has(item.id) ? "Remove from favourites" : "Add to favourites"}
+                          >
+                            ★
+                          </button>
                         )}
 
                         {bulkSelectMode && (
@@ -2473,6 +2526,33 @@ const st = {
     cursor: "pointer",
     WebkitAppearance: "none",
     appearance: "none",
+  },
+
+  // ── Card extras ───────────────────────────────────────────────────────────
+  cardProgressBar: {
+    position: "absolute",
+    bottom: 0, left: 0, right: 0,
+    height: 3,
+    background: "rgba(0,0,0,0.35)",
+  },
+  cardProgressFill: {
+    height: "100%",
+    borderRadius: "0 999px 999px 0",
+    transition: "width 0.3s ease",
+  },
+  starBtn: {
+    position: "absolute",
+    top: 6, right: 6,
+    background: "rgba(0,0,0,0.45)",
+    border: "none",
+    borderRadius: 6,
+    fontSize: "0.9rem",
+    lineHeight: 1,
+    padding: "3px 5px",
+    cursor: "pointer",
+    zIndex: 2,
+    backdropFilter: "blur(4px)",
+    transition: "color 0.15s",
   },
 
   // ── Bulk action bar ───────────────────────────────────────────────────────

@@ -50,6 +50,13 @@ export default function Dashboard({ series, profile, onOpenSeries, onDiscover, o
     [...series].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 8),
     [series]);
 
+  const recentlyFinished = useMemo(() =>
+    [...series]
+      .filter((s) => s.status === "finished")
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      .slice(0, 8),
+    [series]);
+
   const weekProgress = useMemo(() => {
     const cutoff = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
     return activityLog
@@ -103,6 +110,15 @@ export default function Dashboard({ series, profile, onOpenSeries, onDiscover, o
       {recentlyAdded.length > 0 && (
         <Shelf title="Recently Added" onSeeAll={() => onViewLibrary("all")}>
           {recentlyAdded.map((item) => (
+            <CoverCard key={item.id} item={item} onClick={() => onOpenSeries(item)} />
+          ))}
+        </Shelf>
+      )}
+
+      {/* Recently Finished */}
+      {recentlyFinished.length > 0 && (
+        <Shelf title="Finished" onSeeAll={() => onViewLibrary("finished")}>
+          {recentlyFinished.map((item) => (
             <CoverCard key={item.id} item={item} onClick={() => onOpenSeries(item)} />
           ))}
         </Shelf>

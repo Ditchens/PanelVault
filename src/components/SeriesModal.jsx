@@ -466,21 +466,30 @@ export default function SeriesModal({
               />
             </div>
 
-            <label style={s.label}>Rating (1–10)</label>
-            <div style={s.ratingRow}>
-              {[1,2,3,4,5,6,7,8,9,10].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setEditRating(editRating === n ? null : n)}
-                  style={{
-                    ...s.ratingBtn,
-                    ...(editRating === n ? s.ratingBtnActive : {}),
-                  }}
-                >
-                  {n}
+            <label style={s.label}>
+              Rating:{" "}
+              {editRating
+                ? <strong style={s.ratingDisplay}>{editRating} / 10</strong>
+                : <span style={{ color: "#475569", fontWeight: 600 }}>Not rated</span>}
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="0.5"
+                value={editRating || 0}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setEditRating(v === 0 ? null : v);
+                }}
+                style={{ flex: 1, accentColor: "#6366f1", cursor: "pointer" }}
+              />
+              {editRating && (
+                <button type="button" onClick={() => setEditRating(null)} style={s.clearRating}>
+                  Clear
                 </button>
-              ))}
+              )}
             </div>
 
             <label style={s.checkRow}>
@@ -699,27 +708,16 @@ const s = {
     fontWeight: 700,
     textDecoration: "none",
   },
-  ratingRow: {
-    display: "flex",
-    gap: 6,
-    flexWrap: "wrap",
-  },
-  ratingBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(255,255,255,0.05)",
-    color: "#dbe4f0",
-    cursor: "pointer",
-    fontWeight: 800,
-    fontSize: "0.88rem",
-  },
-  ratingBtnActive: {
-    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-    color: "#fff",
+  clearRating: {
+    background: "transparent",
     border: "none",
-    boxShadow: "0 6px 16px rgba(245,158,11,0.3)",
+    color: "#64748b",
+    cursor: "pointer",
+    fontSize: "0.82rem",
+    fontWeight: 700,
+    padding: "4px 8px",
+    flexShrink: 0,
+    borderRadius: 6,
   },
   checkRow: {
     display: "flex",
