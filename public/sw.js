@@ -1,9 +1,17 @@
-const CACHE = "panelvault-v1";
-const PRECACHE = ["/", "/index.html"];
+const CACHE = "panelvault-v2";
+const PRECACHE = ["/", "/index.html", "/manifest.json", "/icon.svg"];
+
+const SKIP_CACHE = [
+  "api.jikan.moe",
+  "api.mangadex.org",
+  "uploads.mangadex.org",
+  "supabase.co",
+  "myanimelist.net",
+];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(PRECACHE))
+    caches.open(CACHE).then((c) => c.addAll(PRECACHE).catch(() => {}))
   );
   self.skipWaiting();
 });
@@ -17,15 +25,43 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// Network-first for API calls, cache-first for assets
 self.addEventListener("fetch", (e) => {
-  if (e.request.url.includes("api.jikan.moe") || e.request.url.includes("supabase")) return;
+  const url = e.request.url;
+
+  // Skip non-GET and external API calls — let them go straight to network
+  if (e.request.method !== "GET") return;
+  if (SKIP_CACHE.some((host) => url.includes(host))) return;
+  // Skip chrome-extension and non-http requests
+  if (!url.startsWith("http")) return;
+
   e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
+    caches.match(e.request).then((cached) => {
+      // Cache hit — return immediately, then refresh in background
+      if (cached) {
+        fetch(e.request)
+          .then((response) => {
+            if (response.ok) {
+              caches.open(CACHE).then((c) => c.put(e.request, response));
+            }
+          })
+          .catch(() => {});
+        return cached;
+      }
+
+      // Cache miss — fetch from network and cache the response
+      return fetch(e.request)
+        .then((response) => {
+          if (response.ok && response.type !== "opaque") {
+            const clone = response.clone();
+            caches.open(CACHE).then((c) => c.put(e.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match("/index.html"));
+    })
   );
 });
 
-// Handle incoming push notifications
 self.addEventListener("push", (e) => {
   const data = e.data?.json() || {};
   e.waitUntil(
@@ -38,7 +74,6 @@ self.addEventListener("push", (e) => {
   );
 });
 
-// Open the app when a notification is clicked
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   e.waitUntil(

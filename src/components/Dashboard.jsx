@@ -1,5 +1,7 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { ACTIVITY_KEY } from "./SettingsModal";
+
+const GOAL_KEY = "panelvault_weekly_goal";
 
 export default function Dashboard({ series, profile, onOpenSeries, onDiscover, onViewLibrary }) {
   const activityLog = useMemo(() => {
@@ -48,6 +50,13 @@ export default function Dashboard({ series, profile, onOpenSeries, onDiscover, o
     [...series].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 8),
     [series]);
 
+  const weekProgress = useMemo(() => {
+    const cutoff = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+    return activityLog
+      .filter((e) => e.date >= cutoff)
+      .reduce((sum, e) => sum + (e.delta || 1), 0);
+  }, [activityLog]);
+
   const totalReading  = series.filter((s) => s.status === "reading").length;
   const totalFinished = series.filter((s) => s.status === "finished").length;
   const greeting = profile?.username ? `@${profile.username}` : null;
@@ -68,6 +77,9 @@ export default function Dashboard({ series, profile, onOpenSeries, onDiscover, o
           <div style={s.pill}>{totalFinished} finished</div>
         </div>
       </div>
+
+      {/* Weekly Goal */}
+      <GoalCard weekProgress={weekProgress} />
 
       {/* Continue Reading */}
       {continueReading.length > 0 && (
@@ -105,6 +117,85 @@ export default function Dashboard({ series, profile, onOpenSeries, onDiscover, o
           <button onClick={onDiscover} style={s.discoverBtn}>Discover Series</button>
         </div>
       )}
+    </div>
+  );
+}
+
+function GoalCard({ weekProgress }) {
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState("");
+  const [goal, setGoal] = useState(() => {
+    try { return parseInt(localStorage.getItem(GOAL_KEY) || "0") || 0; } catch { return 0; }
+  });
+
+  function saveGoal() {
+    const n = parseInt(input);
+    if (n > 0) {
+      localStorage.setItem(GOAL_KEY, String(n));
+      setGoal(n);
+    }
+    setEditing(false);
+    setInput("");
+  }
+
+  if (editing) {
+    return (
+      <div style={s.goalCard}>
+        <span style={s.goalLabel}>Weekly chapters / episodes target</span>
+        <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+          <input
+            type="number"
+            min="1"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") saveGoal(); if (e.key === "Escape") setEditing(false); }}
+            placeholder="e.g. 30"
+            autoFocus
+            style={s.goalInput}
+          />
+          <button onClick={saveGoal} style={s.goalSaveBtn}>Set</button>
+          <button onClick={() => setEditing(false)} style={s.goalCancelBtn}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!goal) {
+    return (
+      <button onClick={() => { setInput(""); setEditing(true); }} style={s.goalEmpty}>
+        Set a weekly reading goal →
+      </button>
+    );
+  }
+
+  const pct = Math.min(100, Math.round((weekProgress / goal) * 100));
+  const done = weekProgress >= goal;
+
+  return (
+    <div style={s.goalCard}>
+      <div style={s.goalTop}>
+        <span style={s.goalLabel}>Weekly Goal</span>
+        <button onClick={() => { setInput(String(goal)); setEditing(true); }} style={s.goalEditBtn}>
+          Edit
+        </button>
+      </div>
+      <div style={s.goalNumbers}>
+        <span style={{ ...s.goalProgressNum, color: done ? "#4ade80" : "#f8fafc" }}>
+          {weekProgress}
+        </span>
+        <span style={s.goalTotalNum}> / {goal}</span>
+        <span style={s.goalUnit}> this week</span>
+      </div>
+      <div style={s.goalBarTrack}>
+        <div style={{
+          ...s.goalBarFill,
+          width: `${pct}%`,
+          background: done
+            ? "linear-gradient(90deg, #22c55e, #4ade80)"
+            : "linear-gradient(90deg, #6366f1, #8b5cf6)",
+        }} />
+      </div>
+      {done && <p style={s.goalAchieved}>Goal reached!</p>}
     </div>
   );
 }
@@ -317,6 +408,100 @@ const s = {
     color: "#f1f5f9",
   },
   emptyText: { margin: 0, color: "#475569", fontSize: "0.9rem" },
+  goalEmpty: {
+    background: "rgba(99,102,241,0.08)",
+    border: "1px dashed rgba(99,102,241,0.3)",
+    borderRadius: 16,
+    padding: "14px 18px",
+    color: "#818cf8",
+    fontSize: "0.88rem",
+    fontWeight: 700,
+    cursor: "pointer",
+    textAlign: "left",
+    width: "100%",
+    maxWidth: 320,
+  },
+  goalCard: {
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 18,
+    padding: "16px 18px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    maxWidth: 360,
+  },
+  goalTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  goalLabel: {
+    fontSize: "0.8rem",
+    fontWeight: 800,
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: "0.07em",
+  },
+  goalNumbers: { display: "flex", alignItems: "baseline", gap: 0 },
+  goalProgressNum: { fontSize: "1.6rem", fontWeight: 900, letterSpacing: "-0.03em" },
+  goalTotalNum: { fontSize: "1rem", fontWeight: 700, color: "#475569" },
+  goalUnit: { fontSize: "0.8rem", color: "#475569", marginLeft: 4 },
+  goalBarTrack: {
+    height: 6,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.07)",
+    overflow: "hidden",
+  },
+  goalBarFill: {
+    height: "100%",
+    borderRadius: 999,
+    transition: "width 0.4s ease",
+  },
+  goalAchieved: {
+    margin: 0,
+    fontSize: "0.82rem",
+    fontWeight: 800,
+    color: "#4ade80",
+  },
+  goalInput: {
+    flex: 1,
+    background: "rgba(255,255,255,0.07)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 10,
+    padding: "8px 12px",
+    color: "#f8fafc",
+    fontSize: "0.95rem",
+    outline: "none",
+    boxSizing: "border-box",
+  },
+  goalSaveBtn: {
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+    border: "none",
+    borderRadius: 10,
+    padding: "8px 14px",
+    color: "#fff",
+    fontWeight: 800,
+    fontSize: "0.88rem",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  goalCancelBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#64748b",
+    fontWeight: 700,
+    fontSize: "0.88rem",
+    cursor: "pointer",
+  },
+  goalEditBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#6366f1",
+    fontWeight: 700,
+    fontSize: "0.78rem",
+    cursor: "pointer",
+  },
   discoverBtn: {
     marginTop: 8,
     background: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)",

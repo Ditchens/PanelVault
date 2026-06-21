@@ -86,6 +86,8 @@ export default function PanelVaultApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showRecommendations, setShowRecommendations] = useState(false);
+  const [bulkSelectMode, setBulkSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const [activeMainView, setActiveMainView] = useState("home"); // "home" | "library"
   const [activeBottomTab, setActiveBottomTab] = useState("home"); // mobile nav
 
@@ -668,6 +670,38 @@ export default function PanelVaultApp() {
       setSelectedItem((prev) => ({ ...prev, currentProgress: next }));
     }
     await persistSeries(updated, { successMessage: "" });
+  }
+
+  // ── Bulk edit ─────────────────────────────────────────────────────────────
+
+  function toggleBulkSelect(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function bulkChangeStatus(newStatus) {
+    const updated = series.map((item) =>
+      selectedIds.has(item.id) ? { ...item, status: newStatus } : item
+    );
+    await persistSeries(updated, { successMessage: `${selectedIds.size} series updated.` });
+    setSelectedIds(new Set());
+    setBulkSelectMode(false);
+  }
+
+  async function bulkDelete() {
+    if (!window.confirm(`Delete ${selectedIds.size} series? This cannot be undone.`)) return;
+    const updated = series.filter((item) => !selectedIds.has(item.id));
+    await persistSeries(updated, { successMessage: `${selectedIds.size} series deleted.` });
+    setSelectedIds(new Set());
+    setBulkSelectMode(false);
+  }
+
+  function exitBulkMode() {
+    setBulkSelectMode(false);
+    setSelectedIds(new Set());
   }
 
   // ── Discover ──────────────────────────────────────────────────────────────
@@ -1415,11 +1449,24 @@ ${anime.map(animeEntry).join("\n")}
         <section>
           <div style={st.sectionHeader}>
             <h2 style={st.sectionHeading}>{filteredAndSorted.length} results</h2>
-            {activeListId && (
-              <button onClick={() => setActiveListId(null)} style={st.exitListBtn}>
-                ← Back
-              </button>
-            )}
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {activeListId && (
+                <button onClick={() => setActiveListId(null)} style={st.exitListBtn}>
+                  ← Back
+                </button>
+              )}
+              {!bulkSelectMode && filteredAndSorted.length > 0 && (
+                <button
+                  onClick={() => { setBulkSelectMode(true); setSelectedIds(new Set()); }}
+                  style={st.exitListBtn}
+                >
+                  Select
+                </button>
+              )}
+              {bulkSelectMode && (
+                <button onClick={exitBulkMode} style={st.exitListBtn}>Cancel</button>
+              )}
+            </div>
           </div>
 
           {filteredAndSorted.length === 0 ? (
@@ -1439,9 +1486,9 @@ ${anime.map(animeEntry).join("\n")}
                 return (
                   <button
                     key={item.id}
-                    onClick={() => setSelectedItem(item)}
+                    onClick={() => bulkSelectMode ? toggleBulkSelect(item.id) : setSelectedItem(item)}
                     style={st.cardButton}
-                    title={`Open ${item.title}`}
+                    title={bulkSelectMode ? `Select ${item.title}` : `Open ${item.title}`}
                   >
                     <div style={st.card}>
                       <div style={st.coverWrap}>
@@ -1473,6 +1520,21 @@ ${anime.map(animeEntry).join("\n")}
 
                         {item.rating != null && (
                           <div style={st.ratingBadge}>★ {item.rating}</div>
+                        )}
+
+                        {bulkSelectMode && (
+                          <div style={{
+                            ...st.bulkOverlay,
+                            background: selectedIds.has(item.id) ? "rgba(99,102,241,0.35)" : "transparent",
+                          }}>
+                            <div style={{
+                              ...st.bulkCheck,
+                              background: selectedIds.has(item.id) ? "#6366f1" : "rgba(15,23,42,0.7)",
+                              border: selectedIds.has(item.id) ? "none" : "2px solid rgba(255,255,255,0.5)",
+                            }}>
+                              {selectedIds.has(item.id) && "✓"}
+                            </div>
+                          </div>
                         )}
                       </div>
 
@@ -1515,12 +1577,41 @@ ${anime.map(animeEntry).join("\n")}
       </>)}
       </main>
 
+      {/* ── BULK ACTION BAR ───────────────────────────────────────────── */}
+      {bulkSelectMode && selectedIds.size > 0 && (
+        <div style={st.bulkBar}>
+          <span style={st.bulkCount}>{selectedIds.size} selected</span>
+          <button
+            onClick={() => setSelectedIds(new Set(filteredAndSorted.map((i) => i.id)))}
+            style={st.bulkActionBtn}
+          >
+            All
+          </button>
+          <select
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) { bulkChangeStatus(e.target.value); e.target.value = ""; } }}
+            style={st.bulkSelect}
+          >
+            <option value="">Move to…</option>
+            {STATUS_OPTIONS
+              .filter((o) => o.key !== "all" && o.key !== "needsReview")
+              .map((o) => (
+                <option key={o.key} value={o.key}>
+                  {getStatusOptionLabel(o, activeMediaCategory)}
+                </option>
+              ))}
+          </select>
+          <button onClick={bulkDelete} style={st.bulkDeleteBtn}>Delete</button>
+        </div>
+      )}
+
       {/* ── MOBILE BOTTOM NAV ─────────────────────────────────────────── */}
       {isMobile && (
         <nav style={st.bottomNav}>
           {[
             { key: "home",     icon: "🏠", label: "Home"     },
-            { key: "library",  icon: "📚", label: "Library"  },
+            { key: "library",  icon: "📚", label: "Library",
+              badge: series.filter((s) => s.status === "reading" && (s.mediaCategory || "comics") === activeMediaCategory).length || 0 },
             { key: "discover", icon: "🔍", label: "Discover" },
             { key: "profile",  icon: "👤", label: "Account"  },
           ].map((tab) => (
@@ -1545,7 +1636,12 @@ ${anime.map(animeEntry).join("\n")}
                 ...(activeBottomTab === tab.key ? st.bottomNavBtnActive : {}),
               }}
             >
-              <span style={{ fontSize: "1.3rem" }}>{tab.icon}</span>
+              <div style={{ position: "relative", display: "inline-flex" }}>
+                <span style={{ fontSize: "1.3rem" }}>{tab.icon}</span>
+                {tab.badge > 0 && (
+                  <span style={st.navBadge}>{tab.badge > 9 ? "9+" : tab.badge}</span>
+                )}
+              </div>
               <span style={st.bottomNavLabel}>{tab.label}</span>
             </button>
           ))}
@@ -2379,6 +2475,88 @@ const st = {
     appearance: "none",
   },
 
+  // ── Bulk action bar ───────────────────────────────────────────────────────
+  bulkBar: {
+    position: "fixed",
+    bottom: 80,
+    left: "50%",
+    transform: "translateX(-50%)",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    background: "rgba(15,23,42,0.97)",
+    border: "1px solid rgba(99,102,241,0.35)",
+    borderRadius: 999,
+    padding: "10px 16px",
+    boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+    zIndex: 45,
+    backdropFilter: "blur(16px)",
+    flexWrap: "wrap",
+    maxWidth: "calc(100vw - 32px)",
+  },
+  bulkCount: {
+    fontSize: "0.88rem",
+    fontWeight: 800,
+    color: "#a5b4fc",
+    whiteSpace: "nowrap",
+  },
+  bulkActionBtn: {
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    color: "#dbe4f0",
+    borderRadius: 999,
+    padding: "6px 12px",
+    fontWeight: 700,
+    fontSize: "0.82rem",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  bulkSelect: {
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    color: "#dbe4f0",
+    borderRadius: 999,
+    padding: "6px 12px",
+    fontWeight: 700,
+    fontSize: "0.82rem",
+    cursor: "pointer",
+    WebkitAppearance: "none",
+    appearance: "none",
+  },
+  bulkDeleteBtn: {
+    background: "rgba(239,68,68,0.15)",
+    border: "1px solid rgba(239,68,68,0.3)",
+    color: "#fca5a5",
+    borderRadius: 999,
+    padding: "6px 12px",
+    fontWeight: 700,
+    fontSize: "0.82rem",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  bulkOverlay: {
+    position: "absolute",
+    inset: 0,
+    borderRadius: 16,
+    transition: "background 0.15s",
+    pointerEvents: "none",
+  },
+  bulkCheck: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "0.75rem",
+    fontWeight: 800,
+    color: "#fff",
+    transition: "background 0.15s",
+  },
+
   // ── Mobile bottom nav ─────────────────────────────────────────────────────
   bottomNav: {
     position: "fixed",
@@ -2407,6 +2585,23 @@ const st = {
   },
   bottomNavBtnActive: { color: "#818cf8" },
   bottomNavLabel: { fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.02em" },
+  navBadge: {
+    position: "absolute",
+    top: -4,
+    right: -6,
+    background: "#6366f1",
+    color: "#fff",
+    borderRadius: 999,
+    fontSize: "0.58rem",
+    fontWeight: 800,
+    minWidth: 16,
+    height: 16,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0 3px",
+    lineHeight: 1,
+  },
 
   // ── Mobile lists sheet ────────────────────────────────────────────────────
   mobileSheet: {

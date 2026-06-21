@@ -15,6 +15,19 @@ import {
   formatStatusLabel,
 } from "../lib/seriesUtils";
 
+const NOTES_KEY = "panelvault_notes";
+function loadNote(id) {
+  try { return (JSON.parse(localStorage.getItem(NOTES_KEY) || "{}"))[id] || ""; } catch { return ""; }
+}
+function saveNote(id, text) {
+  try {
+    const all = JSON.parse(localStorage.getItem(NOTES_KEY) || "{}");
+    if (text.trim()) all[id] = text.trim();
+    else delete all[id];
+    localStorage.setItem(NOTES_KEY, JSON.stringify(all));
+  } catch {}
+}
+
 // Props:
 //   selectedItem       — the series object being viewed
 //   onClose            — () => void
@@ -45,6 +58,8 @@ export default function SeriesModal({
   const [editCurrentProgress, setEditCurrentProgress] = useState(0);
   const [editTotalProgress, setEditTotalProgress] = useState("");
   const [editRating, setEditRating] = useState(null);
+  const [editNotes, setEditNotes] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   // Sync edit state whenever the viewed item changes
@@ -63,6 +78,8 @@ export default function SeriesModal({
     setEditCurrentProgress(selectedItem.currentProgress ?? 0);
     setEditTotalProgress(selectedItem.totalProgress != null ? String(selectedItem.totalProgress) : "");
     setEditRating(selectedItem.rating ?? null);
+    setEditNotes(loadNote(selectedItem.id));
+    setSaveError("");
   }, [selectedItem?.id]);
 
   // Keyboard shortcuts
@@ -78,12 +95,13 @@ export default function SeriesModal({
   }, [detailMode, editTitle, editImage, editMediaCategory, editType, editStatus, editSummary, editTags, editNeedsReview, editAltTitlesText]);
 
   async function handleSave() {
-    if (!editTitle.trim()) { alert("Title cannot be empty."); return; }
+    setSaveError("");
+    if (!editTitle.trim()) { setSaveError("Title cannot be empty."); return; }
 
     const parsedAltTitles = parseAltTitlesText(editAltTitlesText, editTitle);
 
     if (onCheckConflict(editTitle.trim(), parsedAltTitles, selectedItem.id)) {
-      alert("This title or one of its alternate titles already belongs to another entry.");
+      setSaveError("This title or one of its alternate titles already belongs to another entry.");
       return;
     }
 
@@ -107,7 +125,10 @@ export default function SeriesModal({
       rating: editRating,
     });
     setIsSaving(false);
-    if (ok) setDetailMode("info");
+    if (ok) {
+      saveNote(selectedItem.id, editNotes);
+      setDetailMode("info");
+    }
   }
 
   function toggleTag(tag) {
@@ -255,9 +276,22 @@ export default function SeriesModal({
               <p style={s.summary}>
                 {selectedItem.summary?.trim()
                   ? selectedItem.summary
-                  : "No summary yet. Add one in the edit screen."}
+                  : <span style={s.empty}>No summary yet.</span>}
               </p>
             </div>
+
+            {(() => {
+              const note = loadNote(selectedItem.id);
+              if (!note) return null;
+              return (
+                <div style={s.block}>
+                  <p style={s.blockTitle}>Personal Notes</p>
+                  <p style={{ ...s.summary, borderLeft: "3px solid rgba(99,102,241,0.4)", paddingLeft: 12 }}>
+                    {note}
+                  </p>
+                </div>
+              );
+            })()}
 
             {lists.length > 0 && (
               <div style={s.block}>
@@ -384,6 +418,14 @@ export default function SeriesModal({
               style={s.textarea}
             />
 
+            <label style={s.label}>Personal Notes</label>
+            <textarea
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
+              placeholder="Your thoughts, reviews, what to read next..."
+              style={{ ...s.textarea, minHeight: 80 }}
+            />
+
             <label style={s.label}>Tags</label>
             <div style={s.tagWrap}>
               {tagOpts.map((tag) => {
@@ -449,6 +491,8 @@ export default function SeriesModal({
               />
               <span>Keep this in Needs Review</span>
             </label>
+
+            {saveError && <p style={s.saveError}>{saveError}</p>}
 
             <div style={s.buttons}>
               <button onClick={() => setDetailMode("info")} style={s.secondary}>Back</button>
@@ -721,5 +765,15 @@ const s = {
     padding: "11px 14px",
     fontWeight: 700,
     cursor: "pointer",
+  },
+  saveError: {
+    margin: "12px 0 0",
+    padding: "10px 14px",
+    background: "rgba(239,68,68,0.12)",
+    border: "1px solid rgba(239,68,68,0.25)",
+    borderRadius: 10,
+    color: "#fca5a5",
+    fontSize: "0.88rem",
+    fontWeight: 600,
   },
 };
