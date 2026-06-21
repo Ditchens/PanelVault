@@ -43,6 +43,35 @@ function mapAnimeResult(result) {
   };
 }
 
+function mapMangaDexResult(manga) {
+  const { id, attributes, relationships } = manga;
+  const coverRel = (relationships || []).find((r) => r.type === "cover_art");
+  const fileName = coverRel?.attributes?.fileName;
+  const image = fileName ? `https://uploads.mangadex.org/covers/${id}/${fileName}.256.jpg` : "";
+  const title = attributes?.title?.en || Object.values(attributes?.title || {})[0] || "Untitled";
+  const tags = (attributes?.tags || [])
+    .map((t) => t.attributes?.name?.en).filter(Boolean).slice(0, 5);
+  const altTitleObjs = attributes?.altTitles || [];
+  const altTitles = altTitleObjs.flatMap((obj) => Object.values(obj)).filter(Boolean).slice(0, 3);
+  const rawStatus = attributes?.publicationDemographic || "";
+  const typeMap = { shounen: "manga", shoujo: "manga", josei: "manga", seinen: "manga" };
+  return {
+    mdId: id,
+    mediaCategory: "comics",
+    title,
+    image,
+    type: typeMap[rawStatus] || "manga",
+    status: "notRead",
+    summary: attributes?.description?.en || "",
+    altTitles,
+    tags,
+    needsReview: false,
+    currentProgress: 0,
+    totalProgress: attributes?.lastChapter ? parseInt(attributes.lastChapter) || null : null,
+    rating: null,
+  };
+}
+
 const TABS = [
   { key: "search",   label: "Search"     },
   { key: "top",      label: "Top Charts" },
@@ -57,6 +86,7 @@ export default function DiscoverModal({
 }) {
   const [activeTab, setActiveTab] = useState("search");
   const [searchCat, setSearchCat] = useState(defaultMediaCategory);
+  const [searchSource, setSearchSource] = useState("mangadex"); // "mangadex" | "jikan"
 
   // Search state
   const [query, setQuery]         = useState("");
@@ -124,6 +154,18 @@ export default function DiscoverModal({
     setIsSearching(true);
     setSearched(true);
     try {
+      if (searchCat === "comics" && searchSource === "mangadex") {
+        await searchMangaDex();
+      } else {
+        await searchJikan();
+      }
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  async function searchJikan() {
+    try {
       const endpoint =
         searchCat === "anime"
           ? `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=12&sfw=true`
@@ -131,16 +173,26 @@ export default function DiscoverModal({
       const res = await fetch(endpoint);
       const json = await res.json();
       const raw = Array.isArray(json?.data) ? json.data : [];
-      setSearchResults(
-        raw.map((r) => ({
-          malId: r.mal_id,
-          ...(searchCat === "anime" ? mapAnimeResult(r) : mapMangaResult(r)),
-        }))
-      );
+      setSearchResults(raw.map((r) => ({
+        malId: r.mal_id,
+        ...(searchCat === "anime" ? mapAnimeResult(r) : mapMangaResult(r)),
+      })));
     } catch {
       setSearchResults([]);
-    } finally {
-      setIsSearching(false);
+    }
+  }
+
+  async function searchMangaDex() {
+    try {
+      const res = await fetch(
+        `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=12` +
+        `&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive`
+      );
+      const json = await res.json();
+      const raw = Array.isArray(json?.data) ? json.data : [];
+      setSearchResults(raw.map((manga) => mapMangaDexResult(manga)));
+    } catch {
+      setSearchResults([]);
     }
   }
 
@@ -150,13 +202,19 @@ export default function DiscoverModal({
   }
 
   function handleAdd(result) {
-    const { malId, rank, ...seriesData } = result;
+    const { malId, mdId, rank, ...seriesData } = result;
     onAdd(seriesData);
-    setAddedIds((prev) => new Set([...prev, malId]));
+    const trackId = malId ?? mdId ?? result.title;
+    setAddedIds((prev) => new Set([...prev, trackId]));
   }
 
   function isAdded(result) {
-    return isInLibrary(result) || addedIds.has(result.malId);
+    const trackId = result.malId ?? result.mdId ?? result.title;
+    return isInLibrary(result) || addedIds.has(trackId);
+  }
+
+  function resultKey(result) {
+    return result.malId ?? result.mdId ?? result.title;
   }
 
   const activeResults =
@@ -193,16 +251,31 @@ export default function DiscoverModal({
         {/* Search-specific controls */}
         {activeTab === "search" && (
           <>
-            <div style={s.catRow}>
-              {["comics", "anime"].map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => { setSearchCat(cat); setSearchResults([]); setSearched(false); }}
-                  style={{ ...s.catBtn, ...(searchCat === cat ? s.catBtnActive : {}) }}
-                >
-                  {cat === "anime" ? "Anime" : "Comics"}
-                </button>
-              ))}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={s.catRow}>
+                {["comics", "anime"].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => { setSearchCat(cat); setSearchResults([]); setSearched(false); }}
+                    style={{ ...s.catBtn, ...(searchCat === cat ? s.catBtnActive : {}) }}
+                  >
+                    {cat === "anime" ? "Anime" : "Comics"}
+                  </button>
+                ))}
+              </div>
+              {searchCat === "comics" && (
+                <div style={s.catRow}>
+                  {[["mangadex", "MangaDex"], ["jikan", "MAL"]].map(([src, label]) => (
+                    <button
+                      key={src}
+                      onClick={() => { setSearchSource(src); setSearchResults([]); setSearched(false); }}
+                      style={{ ...s.catBtn, ...(searchSource === src ? s.catBtnActive : {}) }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={s.searchRow}>
               <input
@@ -253,7 +326,7 @@ export default function DiscoverModal({
           {activeResults.map((result) => {
             const added = isAdded(result);
             return (
-              <div key={result.malId} style={s.resultItem}>
+              <div key={resultKey(result)} style={s.resultItem}>
                 <div style={s.resultCoverWrap}>
                   {result.image ? (
                     <img
@@ -299,7 +372,11 @@ export default function DiscoverModal({
           })}
         </div>
 
-        <p style={s.footer}>Results from MyAnimeList via Jikan API</p>
+        <p style={s.footer}>
+          {activeTab === "search" && searchSource === "mangadex" && searchCat === "comics"
+            ? "Results from MangaDex"
+            : "Results from MyAnimeList via Jikan API"}
+        </p>
       </div>
     </div>
   );

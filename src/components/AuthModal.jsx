@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { supabase } from "../lib/supabase";
 
-export default function AuthModal() {
-  const [mode, setMode] = useState("login");
+export default function AuthModal({ initialMode = "login" }) {
+  const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);

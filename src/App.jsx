@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, Suspense, lazy } from "react";
 import { supabase } from "./lib/supabase";
 import {
   STORAGE_KEY,
@@ -23,16 +23,19 @@ import {
   formatTypeLabel,
 } from "./lib/seriesUtils";
 import SeriesModal from "./components/SeriesModal";
-import DiscoverModal from "./components/DiscoverModal";
-import AuthModal from "./components/AuthModal";
-import StatsModal from "./components/StatsModal";
-import ImportModal from "./components/ImportModal";
 import OnboardingModal from "./components/OnboardingModal";
 import ProfileModal from "./components/ProfileModal";
 import PublicProfileView from "./components/PublicProfileView";
 import SettingsModal, { loadSettings, ACTIVITY_KEY } from "./components/SettingsModal";
 import ToastStack from "./components/ToastStack";
 import Dashboard from "./components/Dashboard";
+import LandingPage from "./components/LandingPage";
+
+const DiscoverModal         = lazy(() => import("./components/DiscoverModal"));
+const StatsModal            = lazy(() => import("./components/StatsModal"));
+const ImportModal           = lazy(() => import("./components/ImportModal"));
+const HistoryModal          = lazy(() => import("./components/HistoryModal"));
+const RecommendationsModal  = lazy(() => import("./components/RecommendationsModal"));
 
 // ─── Responsive hook ──────────────────────────────────────────────────────────
 function useWindowWidth() {
@@ -81,6 +84,8 @@ export default function PanelVaultApp() {
   const [showStats, setShowStats] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showRecommendations, setShowRecommendations] = useState(false);
   const [activeMainView, setActiveMainView] = useState("home"); // "home" | "library"
   const [activeBottomTab, setActiveBottomTab] = useState("home"); // mobile nav
 
@@ -763,7 +768,10 @@ export default function PanelVaultApp() {
       const q = normalizeTitle(searchTerm);
       filtered = filtered.filter((item) => {
         const names = [item.title, ...(item.altTitles || [])];
-        return names.some((n) => normalizeTitle(n).includes(q));
+        if (names.some((n) => normalizeTitle(n).includes(q))) return true;
+        if (item.tags?.some((t) => normalizeTitle(t).includes(q))) return true;
+        if (item.summary && normalizeTitle(item.summary).includes(q)) return true;
+        return false;
       });
     }
 
@@ -825,6 +833,60 @@ export default function PanelVaultApp() {
     localStorage.clear();
     if (supabase) await supabase.auth.signOut();
     window.location.reload();
+  }
+
+  function exportJSON() {
+    const blob = new Blob([JSON.stringify(series, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "panelvault-library.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast("Library exported as JSON.", "success");
+  }
+
+  function exportMALXML() {
+    const statusMap = { reading: "Reading", finished: "Completed", notRead: "Plan to Read", readNext: "Plan to Read", dropped: "Dropped" };
+    const manga = series.filter((s) => (s.mediaCategory || "comics") === "comics");
+    const anime = series.filter((s) => (s.mediaCategory || "comics") === "anime");
+
+    function mangaEntry(item) {
+      return `  <manga>
+    <manga_title><![CDATA[${item.title}]]></manga_title>
+    <manga_chapters>${item.currentProgress || 0}</manga_chapters>
+    <manga_volumes>0</manga_volumes>
+    <my_status>${statusMap[item.status] || "Plan to Read"}</my_status>
+    <my_score>${item.rating || 0}</my_score>
+  </manga>`;
+    }
+
+    function animeEntry(item) {
+      return `  <anime>
+    <series_title><![CDATA[${item.title}]]></series_title>
+    <my_watched_episodes>${item.currentProgress || 0}</my_watched_episodes>
+    <my_status>${statusMap[item.status] || "Plan to Watch"}</my_status>
+    <my_score>${item.rating || 0}</my_score>
+  </anime>`;
+    }
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<myanimelist>
+  <myinfo>
+    <user_export_type>1</user_export_type>
+  </myinfo>
+${manga.map(mangaEntry).join("\n")}
+${anime.map(animeEntry).join("\n")}
+</myanimelist>`;
+
+    const blob = new Blob([xml], { type: "application/xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "panelvault-mal-export.xml";
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast("Library exported as MAL XML.", "success");
   }
 
   async function checkForUpdates(silent = false) {
@@ -900,7 +962,7 @@ export default function PanelVaultApp() {
   }
 
   if (supabase && authChecked && !currentUser) {
-    return <AuthModal />;
+    return <LandingPage />;
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1030,10 +1092,34 @@ export default function PanelVaultApp() {
                 <span>📊 Stats</span>
               </button>
               <button
+                onClick={() => { setShowHistory(true); setMenuOpen(false); }}
+                style={st.menuItem}
+              >
+                <span>📅 History</span>
+              </button>
+              <button
+                onClick={() => { setShowRecommendations(true); setMenuOpen(false); }}
+                style={st.menuItem}
+              >
+                <span>✨ For You</span>
+              </button>
+              <button
                 onClick={() => { setShowImport(true); setMenuOpen(false); }}
                 style={st.menuItem}
               >
                 <span>📥 Import from MAL</span>
+              </button>
+              <button
+                onClick={() => { exportJSON(); setMenuOpen(false); }}
+                style={st.menuItem}
+              >
+                <span>💾 Export JSON</span>
+              </button>
+              <button
+                onClick={() => { exportMALXML(); setMenuOpen(false); }}
+                style={st.menuItem}
+              >
+                <span>📤 Export MAL XML</span>
               </button>
               <button
                 onClick={() => { setShowSettings(true); setMenuOpen(false); }}
@@ -1508,6 +1594,7 @@ export default function PanelVaultApp() {
       )}
 
       {/* ── MODALS ────────────────────────────────────────────────────── */}
+      <Suspense fallback={null}>
 
       {selectedItem && (
         <SeriesModal
@@ -1574,6 +1661,18 @@ export default function PanelVaultApp() {
         />
       )}
 
+      {showHistory && (
+        <HistoryModal onClose={() => setShowHistory(false)} />
+      )}
+
+      {showRecommendations && (
+        <RecommendationsModal
+          series={series}
+          onOpenSeries={(item) => { setSelectedItem(item); setShowRecommendations(false); }}
+          onClose={() => setShowRecommendations(false)}
+        />
+      )}
+
       {publicProfileUser && (
         <PublicProfileView
           username={publicProfileUser}
@@ -1585,6 +1684,8 @@ export default function PanelVaultApp() {
           }}
         />
       )}
+
+      </Suspense>
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
