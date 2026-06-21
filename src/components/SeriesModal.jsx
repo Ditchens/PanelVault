@@ -132,6 +132,25 @@ export default function SeriesModal({
   const typeOpts = editMediaCategory === "anime" ? ANIME_TYPE_OPTIONS : COMICS_TYPE_OPTIONS;
   const tagOpts  = editMediaCategory === "anime" ? ANIME_TAG_OPTIONS  : COMICS_TAG_OPTIONS;
 
+  function getExternalLink(item) {
+    const cat = item.mediaCategory || "comics";
+    if (cat === "anime") {
+      return {
+        label: "Search on MAL",
+        url: `https://myanimelist.net/search/all?q=${encodeURIComponent(item.title)}&cat=anime`,
+      };
+    }
+    // Extract MangaDex manga ID from cover URL if available
+    if (item.image?.includes("uploads.mangadex.org/covers/")) {
+      const id = item.image.split("/covers/")[1]?.split("/")[0];
+      if (id) return { label: "Read on MangaDex", url: `https://mangadex.org/title/${id}` };
+    }
+    return {
+      label: "Search on MangaDex",
+      url: `https://mangadex.org/search?q=${encodeURIComponent(item.title)}`,
+    };
+  }
+
   const listsContainingItem = new Set(
     lists.filter((l) => l.itemIds.includes(selectedItem?.id)).map((l) => l.id)
   );
@@ -191,6 +210,21 @@ export default function SeriesModal({
                     Rating: <strong style={s.ratingDisplay}>{selectedItem.rating} / 10</strong>
                   </p>
                 ) : null}
+
+                {/* External link */}
+                {(() => {
+                  const link = getExternalLink(selectedItem);
+                  return (
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={s.externalLink}
+                    >
+                      {link.label} ↗
+                    </a>
+                  );
+                })()}
               </div>
             </div>
 
@@ -608,6 +642,18 @@ const s = {
   ratingDisplay: {
     color: "#fbbf24",
     fontSize: "1.05rem",
+  },
+  externalLink: {
+    display: "inline-block",
+    marginTop: 10,
+    padding: "8px 14px",
+    background: "rgba(99,102,241,0.12)",
+    border: "1px solid rgba(99,102,241,0.3)",
+    borderRadius: 10,
+    color: "#a5b4fc",
+    fontSize: "0.84rem",
+    fontWeight: 700,
+    textDecoration: "none",
   },
   ratingRow: {
     display: "flex",

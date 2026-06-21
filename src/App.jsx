@@ -31,6 +31,8 @@ import OnboardingModal from "./components/OnboardingModal";
 import ProfileModal from "./components/ProfileModal";
 import PublicProfileView from "./components/PublicProfileView";
 import SettingsModal, { loadSettings, ACTIVITY_KEY } from "./components/SettingsModal";
+import ToastStack from "./components/ToastStack";
+import Dashboard from "./components/Dashboard";
 
 // ─── Responsive hook ──────────────────────────────────────────────────────────
 function useWindowWidth() {
@@ -79,7 +81,21 @@ export default function PanelVaultApp() {
   const [showStats, setShowStats] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [activeBottomTab, setActiveBottomTab] = useState("library"); // mobile nav
+  const [activeMainView, setActiveMainView] = useState("home"); // "home" | "library"
+  const [activeBottomTab, setActiveBottomTab] = useState("home"); // mobile nav
+
+  // ── Toasts ────────────────────────────────────────────────────────────────
+  const [toasts, setToasts] = useState([]);
+
+  function addToast(message, type = "info") {
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
+  }
+
+  function dismissToast(id) {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }
 
   // ── Profile / social ──────────────────────────────────────────────────────
   const [profile, setProfile]             = useState(null);
@@ -421,7 +437,7 @@ export default function PanelVaultApp() {
     } catch (err) {
       console.error("Failed to save locally:", err);
       if (showLocalError) {
-        alert("Could not save. Browser storage may be full.");
+        addToast("Could not save. Browser storage may be full.", "error");
       }
       return { ok: false, cloudOk: false };
     }
@@ -441,9 +457,7 @@ export default function PanelVaultApp() {
       console.error("Cloud sync failed:", error);
       setCloudStatus("error");
       setCloudMessage("Saved locally, but cloud sync failed.");
-      alert(
-        "Saved locally but cloud sync failed. You may need to run the Supabase column migration. See the README for SQL."
-      );
+      addToast("Saved locally but cloud sync failed.", "error");
       return { ok: true, cloudOk: false };
     }
 
@@ -535,7 +549,7 @@ export default function PanelVaultApp() {
   }
 
   async function addSeries() {
-    if (!title.trim()) { alert("Please enter a title."); return; }
+    if (!title.trim()) { addToast("Please enter a title.", "error"); return; }
 
     const newItem = {
       id: createId(),
@@ -555,7 +569,7 @@ export default function PanelVaultApp() {
     };
 
     if (entryConflictsWithSeries({ title: newItem.title, altTitles: [] })) {
-      alert("That title already exists in your library.");
+      addToast("That title already exists in your library.", "error");
       return;
     }
 
@@ -593,16 +607,16 @@ export default function PanelVaultApp() {
     if (!window.confirm("Remove all cover images? Series data is kept.")) return;
     const result = await persistSeries(
       series.map((item) => ({ ...item, image: "" })),
-      { successMessage: "All covers cleared." }
+      { successMessage: "" }
     );
-    if (result.ok) alert("All cover images cleared.");
+    if (result.ok) addToast("All cover images cleared.", "success");
   }
 
   async function importLocalLibraryToCloud() {
-    if (!supabase)         { alert("Supabase is not configured."); return; }
-    if (!hasLoadedCloud)   { alert("Please wait for the cloud check to finish."); return; }
-    if (cloudHasData)      { alert("Cloud already has data."); return; }
-    if (series.length === 0) { alert("No local data to import."); return; }
+    if (!supabase)           { addToast("Supabase is not configured.", "error"); return; }
+    if (!hasLoadedCloud)     { addToast("Please wait for the cloud check to finish.", "info"); return; }
+    if (cloudHasData)        { addToast("Cloud already has data.", "info"); return; }
+    if (series.length === 0) { addToast("No local data to import.", "info"); return; }
 
     if (!window.confirm(`Import ${series.length} local series to Supabase?`)) return;
 
@@ -618,7 +632,7 @@ export default function PanelVaultApp() {
     if (result.ok && result.cloudOk) {
       setCloudHasData(true);
       localStorage.setItem(CLOUD_IMPORT_FLAG_KEY, "true");
-      alert("Import complete.");
+      addToast("Library imported to cloud.", "success");
     }
   }
 
@@ -869,7 +883,9 @@ export default function PanelVaultApp() {
     setIsCheckingUpdates(false);
 
     if (!silent && newCount === 0) {
-      alert("All up to date — no new chapters or episodes found.");
+      addToast("All up to date — no new chapters or episodes found.", "info");
+    } else if (newCount > 0) {
+      addToast(`${newCount} series updated!`, "success");
     }
   }
 
@@ -933,14 +949,22 @@ export default function PanelVaultApp() {
               </div>
 
               <div style={st.menuDivider} />
+
+              <button
+                onClick={() => { setActiveMainView("home"); setMenuOpen(false); }}
+                style={{ ...st.menuItem, ...(activeMainView === "home" ? st.menuItemActive : {}) }}
+              >
+                <span>🏠 Home</span>
+              </button>
+
               <div style={st.menuSectionLabel}>Library Views</div>
 
               {STATUS_OPTIONS.map((view) => {
-                const active = !activeListId && activeStatus === view.key;
+                const active = activeMainView === "library" && !activeListId && activeStatus === view.key;
                 return (
                   <button
                     key={view.key}
-                    onClick={() => { setActiveStatus(view.key); setActiveListId(null); setMenuOpen(false); }}
+                    onClick={() => { setActiveMainView("library"); setActiveStatus(view.key); setActiveListId(null); setMenuOpen(false); }}
                     style={{ ...st.menuItem, ...(active ? st.menuItemActive : {}) }}
                   >
                     <span>{getStatusOptionLabel(view, activeMediaCategory)}</span>
@@ -1096,6 +1120,20 @@ export default function PanelVaultApp() {
 
       {/* ── MAIN ──────────────────────────────────────────────────────── */}
       <main style={{ ...st.main, ...(isMobile ? { padding: "16px 14px" } : {}) }}>
+      {activeMainView === "home" ? (
+        <Dashboard
+          series={series}
+          profile={profile}
+          onOpenSeries={setSelectedItem}
+          onDiscover={() => setShowDiscover(true)}
+          onViewLibrary={(status) => {
+            setActiveMainView("library");
+            setActiveStatus(status);
+            setActiveListId(null);
+            setActiveBottomTab("library");
+          }}
+        />
+      ) : (<>
 
         {/* Hero row */}
         <section style={{ ...st.heroRow, ...(isMobile ? { flexDirection: "column", gap: 12 } : {}) }}>
@@ -1388,15 +1426,16 @@ export default function PanelVaultApp() {
             </div>
           )}
         </section>
+      </>)}
       </main>
 
       {/* ── MOBILE BOTTOM NAV ─────────────────────────────────────────── */}
       {isMobile && (
         <nav style={st.bottomNav}>
           {[
+            { key: "home",     icon: "🏠", label: "Home"     },
             { key: "library",  icon: "📚", label: "Library"  },
             { key: "discover", icon: "🔍", label: "Discover" },
-            { key: "lists",    icon: "📋", label: "Lists"    },
             { key: "profile",  icon: "👤", label: "Account"  },
           ].map((tab) => (
             <button
@@ -1404,19 +1443,20 @@ export default function PanelVaultApp() {
               onClick={() => {
                 if (tab.key === "discover") {
                   setShowDiscover(true);
-                } else if (tab.key === "lists") {
-                  setActiveBottomTab("lists");
-                  setMenuOpen(true);
                 } else if (tab.key === "profile") {
                   setShowProfile(true);
+                } else if (tab.key === "home") {
+                  setActiveMainView("home");
+                  setActiveBottomTab("home");
                 } else {
-                  setActiveBottomTab(tab.key);
+                  setActiveMainView("library");
+                  setActiveBottomTab("library");
                   setActiveListId(null);
                 }
               }}
               style={{
                 ...st.bottomNavBtn,
-                ...(activeBottomTab === tab.key && tab.key !== "discover" ? st.bottomNavBtnActive : {}),
+                ...(activeBottomTab === tab.key ? st.bottomNavBtnActive : {}),
               }}
             >
               <span style={{ fontSize: "1.3rem" }}>{tab.icon}</span>
@@ -1545,6 +1585,8 @@ export default function PanelVaultApp() {
           }}
         />
       )}
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
