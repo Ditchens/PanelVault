@@ -1497,12 +1497,37 @@ ${anime.map(animeEntry).join("\n")}
 
           {filteredAndSorted.length === 0 ? (
             <div style={st.emptyState}>
-              <p style={st.emptyTitle}>Nothing here yet.</p>
-              <p style={st.emptyText}>
-                {activeListId
-                  ? "Add series to this list from their detail card."
-                  : "Try another filter or add a new title above."}
+              <div style={{ fontSize: "2.6rem", lineHeight: 1 }}>
+                {activeStatus === "reading" ? "📖" :
+                 activeStatus === "finished" ? "🏆" :
+                 activeStatus === "favorites" ? "⭐" :
+                 activeStatus === "dropped" ? "📦" :
+                 activeStatus === "readNext" ? "🔖" : "✨"}
+              </div>
+              <p style={st.emptyTitle}>
+                {activeListId ? "This list is empty" :
+                 activeStatus === "all" ? "Your library is empty" :
+                 activeStatus === "reading" ? "Nothing in progress" :
+                 activeStatus === "finished" ? "Nothing finished yet" :
+                 activeStatus === "readNext" ? "Queue is empty" :
+                 activeStatus === "dropped" ? "Nothing dropped" :
+                 activeStatus === "favorites" ? "No favourites yet" :
+                 "Nothing here yet"}
               </p>
+              <p style={st.emptyText}>
+                {activeListId ? "Add series to this list from their detail card." :
+                 activeStatus === "all" ? "Tap Discover to find something to read." :
+                 activeStatus === "reading" ? "Move a series to Reading to track it here." :
+                 activeStatus === "finished" ? "Completed series will appear here." :
+                 activeStatus === "readNext" ? "Add series to your queue and they'll show up here." :
+                 activeStatus === "favorites" ? "Tap ★ on any card to favourite it." :
+                 "Try another filter or add a new title above."}
+              </p>
+              {activeStatus === "all" && !activeListId && (
+                <button onClick={() => setShowDiscover(true)} style={st.emptyDiscoverBtn}>
+                  Discover Something →
+                </button>
+              )}
             </div>
           ) : (
             <div style={{ ...st.grid, ...(isMobile ? { gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 } : {}) }}>
@@ -1514,6 +1539,7 @@ ${anime.map(animeEntry).join("\n")}
                     key={item.id}
                     onClick={() => bulkSelectMode ? toggleBulkSelect(item.id) : setSelectedItem(item)}
                     style={st.cardButton}
+                    className="pv-card"
                     title={bulkSelectMode ? `Select ${item.title}` : `Open ${item.title}`}
                   >
                     <div style={st.card}>
@@ -2354,12 +2380,28 @@ const st = {
     background: "rgba(15,23,42,0.5)",
     border: "1px solid rgba(255,255,255,0.08)",
     borderRadius: 22,
-    padding: 28,
+    padding: "52px 28px",
     textAlign: "center",
     color: "#cbd5e1",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 10,
   },
-  emptyTitle: { fontSize: "1.05rem", fontWeight: 700, marginBottom: 6, color: "#f8fafc" },
-  emptyText: { margin: 0 },
+  emptyTitle: { margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "#f1f5f9" },
+  emptyText: { margin: 0, color: "#64748b", fontSize: "0.9rem", maxWidth: 280 },
+  emptyDiscoverBtn: {
+    marginTop: 6,
+    background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 14,
+    padding: "11px 22px",
+    fontWeight: 800,
+    cursor: "pointer",
+    fontSize: "0.9rem",
+    boxShadow: "0 10px 24px rgba(99,102,241,0.28)",
+  },
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
@@ -2538,7 +2580,7 @@ const st = {
   },
   cardProgressFill: {
     height: "100%",
-    borderRadius: "0 999px 999px 0",
+    borderRadius: 999,
     transition: "width 0.3s ease",
   },
   starBtn: {

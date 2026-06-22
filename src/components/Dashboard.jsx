@@ -231,7 +231,7 @@ function Shelf({ title, onSeeAll, children }) {
 function CoverCard({ item, onClick, showProgress }) {
   const isAnime = item.mediaCategory === "anime";
   return (
-    <button onClick={onClick} style={s.card}>
+    <button onClick={onClick} style={s.card} className="pv-shelf-card">
       <div style={s.coverWrap}>
         {item.image ? (
           <img src={item.image} alt={item.title} style={s.cover}
@@ -255,7 +255,7 @@ function CoverCard({ item, onClick, showProgress }) {
 
 const s = {
   page: {
-    padding: "24px 24px 48px",
+    padding: "20px 16px 48px",
     display: "flex",
     flexDirection: "column",
     gap: 32,
@@ -333,13 +333,14 @@ const s = {
     display: "flex",
     gap: 12,
     overflowX: "auto",
-    paddingBottom: 6,
+    paddingBottom: 8,
+    paddingRight: 16,
     scrollbarWidth: "none",
     msOverflowStyle: "none",
   },
   card: {
     flexShrink: 0,
-    width: 120,
+    width: 140,
     background: "transparent",
     border: "none",
     padding: 0,
@@ -350,14 +351,15 @@ const s = {
     gap: 7,
   },
   coverWrap: {
-    width: 120,
-    height: 170,
+    width: 140,
+    height: 198,
     borderRadius: 14,
     overflow: "hidden",
     background: "#0f172a",
     border: "1px solid rgba(255,255,255,0.08)",
     position: "relative",
     flexShrink: 0,
+    boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
   },
   cover: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
   noCover: {
@@ -438,8 +440,9 @@ const s = {
     maxWidth: 320,
   },
   goalCard: {
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderLeft: "3px solid rgba(99,102,241,0.6)",
     borderRadius: 18,
     padding: "16px 18px",
     display: "flex",

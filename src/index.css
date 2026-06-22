@@ -25,3 +25,113 @@ body,
 body {
   background: #0b0f18;
 }
+
+/* ── Card hover lift ─────────────────────────────────── */
+.pv-card {
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.22s ease;
+}
+.pv-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 28px 56px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(99, 102, 241, 0.2) !important;
+}
+.pv-card:active {
+  transform: translateY(-2px);
+}
+
+/* ── Shelf card hover ────────────────────────────────── */
+.pv-shelf-card {
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    filter 0.22s ease;
+}
+.pv-shelf-card:hover {
+  transform: translateY(-5px) scale(1.02);
+  filter: brightness(1.06);
+}
+.pv-shelf-card:active {
+  transform: translateY(-2px) scale(1.01);
+}
+
+/* ── Modal entrance ──────────────────────────────────── */
+@keyframes pvModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.pv-modal-content {
+  animation: pvModalIn 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Page section fade-up ────────────────────────────── */
+@keyframes pvFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pv-fade-up {
+  animation: pvFadeUp 0.4s ease forwards;
+}
+
+/* ── Scrollbar ───────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ── Focus ring ──────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.75);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── Text selection ──────────────────────────────────── */
+::selection {
+  background: rgba(99, 102, 241, 0.35);
+  color: #ffffff;
+}
+
+/* ── Image load fade ─────────────────────────────────── */
+img {
+  transition: opacity 0.25s ease;
+}
+
+/* ── Button base ─────────────────────────────────────── */
+button {
+  font-family: inherit;
+}
+
+/* ── Landing feature card hover ──────────────────────── */
+.pv-feature-card {
+  transition: transform 0.22s ease, border-color 0.22s ease,
+    background 0.22s ease;
+  cursor: default;
+}
+.pv-feature-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(99, 102, 241, 0.28) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}

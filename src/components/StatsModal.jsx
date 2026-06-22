@@ -135,7 +135,7 @@ export default function StatsModal({ series, activityLog = [], onClose }) {
 
   return (
     <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+      <div style={s.modal} className="pv-modal-content" onClick={(e) => e.stopPropagation()}>
         <div style={s.header}>
           <h2 style={s.heading}>Library Stats</h2>
           <button onClick={onClose} style={s.closeBtn} aria-label="Close">✕</button>

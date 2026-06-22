@@ -209,7 +209,7 @@ export default function SeriesModal({
 
   return (
     <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+      <div style={s.modal} className="pv-modal-content" onClick={(e) => e.stopPropagation()}>
 
         {/* ── INFO VIEW ────────────────────────────────────────────── */}
         {detailMode === "info" ? (

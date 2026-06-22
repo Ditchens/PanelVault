@@ -60,7 +60,7 @@ export default function RecommendationsModal({ series, onOpenSeries, onClose }) 
 
   return (
     <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+      <div style={s.modal} className="pv-modal-content" onClick={(e) => e.stopPropagation()}>
         <div style={s.header}>
           <h2 style={s.heading}>For You</h2>
           <button onClick={onClose} style={s.closeBtn}>✕</button>

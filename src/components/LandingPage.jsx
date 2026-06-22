@@ -49,12 +49,32 @@ export default function LandingPage() {
             Sign in
           </button>
         </div>
+
+        {/* App preview mockup */}
+        <div style={s.previewWrap}>
+          <div style={s.previewShelf}>
+            {[
+              { c: "linear-gradient(160deg,#6366f1,#8b5cf6)", label: "Action" },
+              { c: "linear-gradient(160deg,#0ea5e9,#06b6d4)", label: "Shonen" },
+              { c: "linear-gradient(160deg,#f43f5e,#e11d48)", label: "Romance" },
+              { c: "linear-gradient(160deg,#10b981,#059669)", label: "Isekai" },
+              { c: "linear-gradient(160deg,#f59e0b,#d97706)", label: "Horror" },
+            ].map((card, i) => (
+              <div key={i} style={{ ...s.previewCard, background: card.c }}>
+                <span style={s.previewLabel}>{card.label}</span>
+                <div style={s.previewBar}>
+                  <div style={{ ...s.previewBarFill, width: `${40 + i * 12}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
       {/* Features */}
       <section style={s.features}>
         {FEATURES.map((f) => (
-          <div key={f.title} style={s.featureCard}>
+          <div key={f.title} style={s.featureCard} className="pv-feature-card">
             <span style={s.featureIcon}>{f.icon}</span>
             <strong style={s.featureTitle}>{f.title}</strong>
             <p style={s.featureDesc}>{f.desc}</p>
@@ -139,7 +159,7 @@ const s = {
   },
   heroSub: {
     margin: "0 auto 32px", maxWidth: 560,
-    color: "#64748b", fontSize: "1.1rem", lineHeight: 1.65,
+    color: "#94a3b8", fontSize: "1.1rem", lineHeight: 1.65,
   },
   heroCtas: { display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" },
   ctaPrimary: {
@@ -153,10 +173,58 @@ const s = {
     color: "#dbe4f0", borderRadius: 16,
     padding: "14px 28px", fontWeight: 700, fontSize: "1rem", cursor: "pointer",
   },
+  previewWrap: {
+    marginTop: 40,
+    background: "rgba(255,255,255,0.03)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 24,
+    padding: "20px 16px",
+    overflow: "hidden",
+    maxWidth: 600,
+    margin: "40px auto 0",
+  },
+  previewShelf: {
+    display: "flex",
+    gap: 10,
+    overflowX: "hidden",
+    justifyContent: "center",
+  },
+  previewCard: {
+    flexShrink: 0,
+    width: 96,
+    height: 136,
+    borderRadius: 12,
+    opacity: 0.85,
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "flex-end",
+    padding: 8,
+    boxShadow: "0 10px 28px rgba(0,0,0,0.4)",
+  },
+  previewLabel: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: "0.65rem",
+    fontWeight: 800,
+    letterSpacing: "0.04em",
+    marginBottom: 5,
+    display: "block",
+  },
+  previewBar: {
+    height: 3,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.2)",
+    overflow: "hidden",
+  },
+  previewBarFill: {
+    height: "100%",
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.8)",
+  },
   features: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-    gap: 16, maxWidth: 1000, margin: "0 auto", padding: "0 24px 80px",
+    gap: 16, maxWidth: 1000, margin: "0 auto", padding: "60px 24px 80px",
   },
   featureCard: {
     background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
@@ -176,5 +244,5 @@ const s = {
     letterSpacing: "-0.03em", color: "#ffffff",
   },
   footer: { padding: "24px", borderTop: "1px solid rgba(255,255,255,0.04)" },
-  footerText: { margin: 0, textAlign: "center", color: "#1e293b", fontSize: "0.82rem" },
+  footerText: { margin: 0, textAlign: "center", color: "#475569", fontSize: "0.82rem" },
 };
