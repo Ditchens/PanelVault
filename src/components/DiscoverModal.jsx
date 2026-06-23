@@ -1,58 +1,28 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { normalizeTitle } from "../lib/seriesUtils";
 
-function mapMangaResult(result) {
-  const rawType = (result.type || "").toLowerCase();
-  const typeMap = { manhwa: "manhwa", manhua: "manhua", manga: "manga" };
-  return {
-    mediaCategory: "comics",
-    title: result.title_english || result.title || "Untitled",
-    image: result.images?.jpg?.image_url || "",
-    type: typeMap[rawType] || "manga",
-    status: "notRead",
-    summary: result.synopsis || "",
-    altTitles: [result.title, result.title_japanese]
-      .filter(Boolean)
-      .filter((t) => t !== (result.title_english || result.title)),
-    tags: [],
-    needsReview: false,
-    currentProgress: 0,
-    totalProgress: result.chapters && result.chapters > 0 ? result.chapters : null,
-    rating: null,
-  };
-}
-
-function mapAnimeResult(result) {
-  const rawType = (result.type || "").toLowerCase();
-  const typeMap = { tv: "tv", movie: "movie", ova: "ova", ona: "ona" };
-  return {
-    mediaCategory: "anime",
-    title: result.title_english || result.title || "Untitled",
-    image: result.images?.jpg?.image_url || "",
-    type: typeMap[rawType] || "tv",
-    status: "notRead",
-    summary: result.synopsis || "",
-    altTitles: [result.title, result.title_japanese]
-      .filter(Boolean)
-      .filter((t) => t !== (result.title_english || result.title)),
-    tags: [],
-    needsReview: false,
-    currentProgress: 0,
-    totalProgress: result.episodes && result.episodes > 0 ? result.episodes : null,
-    rating: null,
-  };
-}
+// ── Mappers ───────────────────────────────────────────────────────────────────
 
 function mapMangaDexResult(manga) {
   const { id, attributes, relationships } = manga;
   const coverRel = (relationships || []).find((r) => r.type === "cover_art");
   const fileName = coverRel?.attributes?.fileName;
-  const image = fileName ? `https://uploads.mangadex.org/covers/${id}/${fileName}.256.jpg` : "";
-  const title = attributes?.title?.en || Object.values(attributes?.title || {})[0] || "Untitled";
+  const image = fileName
+    ? `https://uploads.mangadex.org/covers/${id}/${fileName}.512.jpg`
+    : "";
+  const title =
+    attributes?.title?.en ||
+    Object.values(attributes?.title || {})[0] ||
+    "Untitled";
   const tags = (attributes?.tags || [])
-    .map((t) => t.attributes?.name?.en).filter(Boolean).slice(0, 5);
+    .map((t) => t.attributes?.name?.en)
+    .filter(Boolean)
+    .slice(0, 5);
   const altTitleObjs = attributes?.altTitles || [];
-  const altTitles = altTitleObjs.flatMap((obj) => Object.values(obj)).filter(Boolean).slice(0, 3);
+  const altTitles = altTitleObjs
+    .flatMap((obj) => Object.values(obj))
+    .filter(Boolean)
+    .slice(0, 3);
   const rawStatus = attributes?.publicationDemographic || "";
   const typeMap = { shounen: "manga", shoujo: "manga", josei: "manga", seinen: "manga" };
   return {
@@ -72,172 +42,272 @@ function mapMangaDexResult(manga) {
   };
 }
 
-const TABS = [
-  { key: "search",   label: "Search"     },
-  { key: "top",      label: "Top Charts" },
-  { key: "seasonal", label: "Seasonal"   },
+function mapJikanManga(r) {
+  const rawType = (r.type || "").toLowerCase();
+  const typeMap = { manhwa: "manhwa", manhua: "manhua", manga: "manga", "one-shot": "manga" };
+  return {
+    malId: r.mal_id,
+    mediaCategory: "comics",
+    title: r.title_english || r.title || "Untitled",
+    image: r.images?.jpg?.large_image_url || r.images?.jpg?.image_url || "",
+    type: typeMap[rawType] || "manga",
+    status: "notRead",
+    summary: r.synopsis || "",
+    altTitles: [r.title, r.title_japanese]
+      .filter(Boolean)
+      .filter((t) => t !== (r.title_english || r.title)),
+    tags: [],
+    needsReview: false,
+    currentProgress: 0,
+    totalProgress: r.chapters && r.chapters > 0 ? r.chapters : null,
+    rating: null,
+  };
+}
+
+function mapJikanAnime(r) {
+  const rawType = (r.type || "").toLowerCase();
+  const typeMap = { tv: "tv", movie: "movie", ova: "ova", ona: "ona", special: "special" };
+  return {
+    malId: r.mal_id,
+    mediaCategory: "anime",
+    title: r.title_english || r.title || "Untitled",
+    image: r.images?.jpg?.large_image_url || r.images?.jpg?.image_url || "",
+    type: typeMap[rawType] || "tv",
+    status: "notRead",
+    summary: r.synopsis || "",
+    altTitles: [r.title, r.title_japanese]
+      .filter(Boolean)
+      .filter((t) => t !== (r.title_english || r.title)),
+    tags: [],
+    needsReview: false,
+    currentProgress: 0,
+    totalProgress: r.episodes && r.episodes > 0 ? r.episodes : null,
+    rating: null,
+  };
+}
+
+// ── Status picker (shown on "+ Add" click) ────────────────────────────────────
+
+const STATUS_QUICK = [
+  { key: "reading",  label: "Reading",      emoji: "📖" },
+  { key: "readNext", label: "Want to Read",  emoji: "🔖" },
+  { key: "notRead",  label: "Backlog",       emoji: "📚" },
 ];
 
-export default function DiscoverModal({
-  onClose,
-  onAdd,
-  existingTitles,
-  defaultMediaCategory = "comics",
-}) {
-  const [activeTab, setActiveTab] = useState("search");
-  const [searchCat, setSearchCat] = useState(defaultMediaCategory);
-  const [searchSource, setSearchSource] = useState("mangadex"); // "mangadex" | "jikan"
+function StatusPicker({ onPick, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    function onClick(e) { if (ref.current && !ref.current.contains(e.target)) onClose(); }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [onClose]);
+  return (
+    <div ref={ref} style={s.picker}>
+      {STATUS_QUICK.map((opt) => (
+        <button key={opt.key} onClick={() => onPick(opt.key)} style={s.pickerBtn}>
+          <span>{opt.emoji}</span>
+          <span style={s.pickerLabel}>{opt.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
-  // Search state
-  const [query, setQuery]         = useState("");
+// ── Cover card ────────────────────────────────────────────────────────────────
+
+function CoverCard({ result, added, onAdd }) {
+  const [picking, setPicking] = useState(false);
+
+  function handleAddClick(e) {
+    e.stopPropagation();
+    setPicking(true);
+  }
+  function handlePick(status) {
+    setPicking(false);
+    onAdd(result, status);
+  }
+
+  return (
+    <div style={s.card}>
+      <div style={s.coverWrap}>
+        {result.image ? (
+          <img
+            src={result.image}
+            alt={result.title}
+            style={s.coverImg}
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
+          />
+        ) : (
+          <div style={s.noCover}>
+            <span style={s.noCoverInitial}>{result.title[0]?.toUpperCase()}</span>
+          </div>
+        )}
+
+        {result.rank && (
+          <div style={s.rankBadge}>#{result.rank}</div>
+        )}
+
+        <div style={s.cardOverlay}>
+          {added ? (
+            <span style={s.addedBadge}>✓ Added</span>
+          ) : (
+            <button onClick={handleAddClick} style={s.addBtn}>+ Track</button>
+          )}
+        </div>
+
+        {picking && (
+          <div style={s.pickerWrap} onClick={(e) => e.stopPropagation()}>
+            <StatusPicker onPick={handlePick} onClose={() => setPicking(false)} />
+          </div>
+        )}
+      </div>
+      <p style={s.cardTitle}>{result.title}</p>
+      <p style={s.cardMeta}>
+        {result.mediaCategory === "anime" ? "Anime" : result.type?.charAt(0).toUpperCase() + result.type?.slice(1)}
+        {result.totalProgress ? ` · ${result.mediaCategory === "anime" ? result.totalProgress + " ep" : result.totalProgress + " ch"}` : ""}
+      </p>
+    </div>
+  );
+}
+
+// ── Main modal ────────────────────────────────────────────────────────────────
+
+const TABS = [
+  { key: "trending",  label: "Trending"  },
+  { key: "search",    label: "Search"    },
+  { key: "seasonal",  label: "Seasonal"  },
+];
+
+export default function DiscoverModal({ onClose, onAdd, existingTitles }) {
+  const [activeTab, setActiveTab]   = useState("trending");
+  const [trendFilter, setTrendFilter] = useState("all"); // "all" | "comics" | "anime"
+
+  const [trendResults, setTrendResults]   = useState([]);
+  const [trendLoaded, setTrendLoaded]     = useState(false);
+  const [isLoadingTrend, setIsLoadingTrend] = useState(false);
+
+  const [query, setQuery]             = useState("");
+  const [searchCat, setSearchCat]     = useState("comics");
   const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching]     = useState(false);
-  const [searched, setSearched]           = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searched, setSearched]       = useState(false);
 
-  // Top / Seasonal state
-  const [topResults, setTopResults]       = useState([]);
-  const [topFilter, setTopFilter]         = useState("all"); // "all" | "comics" | "anime"
   const [seasonalResults, setSeasonalResults] = useState([]);
-  const [isLoadingTop, setIsLoadingTop]   = useState(false);
+  const [seasonalLoaded, setSeasonalLoaded]   = useState(false);
   const [isLoadingSeasonal, setIsLoadingSeasonal] = useState(false);
-  const [topLoaded, setTopLoaded]         = useState(false);
-  const [seasonalLoaded, setSeasonalLoaded] = useState(false);
 
-  // Track adds this session
   const [addedIds, setAddedIds] = useState(new Set());
 
-  // Auto-load top charts and seasonal when those tabs are first opened
-  useEffect(() => {
-    if (activeTab === "top" && !topLoaded) loadTop();
-  }, [activeTab]);
+  // Load trending immediately on mount
+  useEffect(() => { loadTrending(); }, []);
 
   useEffect(() => {
     if (activeTab === "seasonal" && !seasonalLoaded) loadSeasonal();
   }, [activeTab]);
 
-  async function loadTop() {
-    setIsLoadingTop(true);
+  async function loadTrending() {
+    if (trendLoaded) return;
+    setIsLoadingTrend(true);
     try {
       const [mangaRes, animeRes] = await Promise.all([
-        fetch("https://api.jikan.moe/v4/top/manga?limit=12&sfw=true"),
-        fetch("https://api.jikan.moe/v4/top/anime?limit=12&sfw=true"),
+        fetch("https://api.jikan.moe/v4/top/manga?limit=20&sfw=true"),
+        fetch("https://api.jikan.moe/v4/top/anime?limit=20&sfw=true"),
       ]);
-      const mangaJson = await mangaRes.json();
-      const animeJson = await animeRes.json();
-      const manga = (mangaJson?.data || []).map((r) => ({ malId: r.mal_id, rank: r.rank, ...mapMangaResult(r) }));
-      const anime = (animeJson?.data || []).map((r) => ({ malId: r.mal_id, rank: r.rank, ...mapAnimeResult(r) }));
-      setTopResults([...manga, ...anime]);
-      setTopLoaded(true);
-    } catch {
-      setTopResults([]);
-    } finally {
-      setIsLoadingTop(false);
-    }
+      const [mangaJson, animeJson] = await Promise.all([mangaRes.json(), animeRes.json()]);
+      const manga = (mangaJson?.data || []).map((r) => ({ ...mapJikanManga(r), rank: r.rank }));
+      const anime = (animeJson?.data || []).map((r) => ({ ...mapJikanAnime(r), rank: r.rank }));
+      setTrendResults([...manga, ...anime]);
+      setTrendLoaded(true);
+    } catch { setTrendResults([]); }
+    finally { setIsLoadingTrend(false); }
   }
 
   async function loadSeasonal() {
     setIsLoadingSeasonal(true);
     try {
-      const res = await fetch("https://api.jikan.moe/v4/seasons/now?limit=20&sfw=true");
+      const res = await fetch("https://api.jikan.moe/v4/seasons/now?limit=24&sfw=true");
       const json = await res.json();
-      const items = (json?.data || []).map((r) => ({ malId: r.mal_id, ...mapAnimeResult(r) }));
-      setSeasonalResults(items);
+      setSeasonalResults((json?.data || []).map(mapJikanAnime));
       setSeasonalLoaded(true);
-    } catch {
-      setSeasonalResults([]);
-    } finally {
-      setIsLoadingSeasonal(false);
-    }
+    } catch { setSeasonalResults([]); }
+    finally { setIsLoadingSeasonal(false); }
   }
 
   async function handleSearch() {
     if (!query.trim()) return;
     setIsSearching(true);
     setSearched(true);
+    setSearchResults([]);
     try {
-      if (searchCat === "comics" && searchSource === "mangadex") {
-        await searchMangaDex();
+      if (searchCat === "comics") {
+        // Try MangaDex first for comics
+        const res = await fetch(
+          `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=20` +
+          `&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica`
+        );
+        if (res.ok) {
+          const json = await res.json();
+          const results = (json?.data || []).map(mapMangaDexResult);
+          if (results.length) { setSearchResults(results); return; }
+        }
+        // Fallback to Jikan
+        const fallback = await fetch(
+          `https://api.jikan.moe/v4/manga?q=${encodeURIComponent(query)}&limit=20&sfw=true`
+        );
+        const fallbackJson = await fallback.json();
+        setSearchResults((fallbackJson?.data || []).map(mapJikanManga));
       } else {
-        await searchJikan();
+        const res = await fetch(
+          `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=20&sfw=true`
+        );
+        const json = await res.json();
+        setSearchResults((json?.data || []).map(mapJikanAnime));
       }
-    } finally {
-      setIsSearching(false);
-    }
-  }
-
-  async function searchJikan() {
-    try {
-      const endpoint =
-        searchCat === "anime"
-          ? `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=12&sfw=true`
-          : `https://api.jikan.moe/v4/manga?q=${encodeURIComponent(query)}&limit=12&sfw=true`;
-      const res = await fetch(endpoint);
-      const json = await res.json();
-      const raw = Array.isArray(json?.data) ? json.data : [];
-      setSearchResults(raw.map((r) => ({
-        malId: r.mal_id,
-        ...(searchCat === "anime" ? mapAnimeResult(r) : mapMangaResult(r)),
-      })));
-    } catch {
-      setSearchResults([]);
-    }
-  }
-
-  async function searchMangaDex() {
-    try {
-      const res = await fetch(
-        `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=12` +
-        `&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive`
-      );
-      const json = await res.json();
-      const raw = Array.isArray(json?.data) ? json.data : [];
-      setSearchResults(raw.map((manga) => mapMangaDexResult(manga)));
-    } catch {
-      setSearchResults([]);
-    }
+    } catch { setSearchResults([]); }
+    finally { setIsSearching(false); }
   }
 
   function isInLibrary(result) {
     const check = (t) => t && existingTitles.has(normalizeTitle(t));
-    return check(result.title) || result.altTitles.some((a) => check(a));
-  }
-
-  function handleAdd(result) {
-    const { malId, mdId, rank, ...seriesData } = result;
-    onAdd(seriesData);
-    const trackId = malId ?? mdId ?? result.title;
-    setAddedIds((prev) => new Set([...prev, trackId]));
+    return check(result.title) || (result.altTitles || []).some(check);
   }
 
   function isAdded(result) {
-    const trackId = result.malId ?? result.mdId ?? result.title;
-    return isInLibrary(result) || addedIds.has(trackId);
+    const id = result.malId ?? result.mdId ?? result.title;
+    return isInLibrary(result) || addedIds.has(id);
   }
 
-  function resultKey(result) {
-    return result.malId ?? result.mdId ?? result.title;
+  function handleAdd(result, status = "notRead") {
+    const { malId, mdId, rank, ...seriesData } = result;
+    onAdd({ ...seriesData, status });
+    const id = malId ?? mdId ?? result.title;
+    setAddedIds((prev) => new Set([...prev, id]));
   }
 
-  const filteredTopResults = topFilter === "all"
-    ? topResults
-    : topResults.filter((r) => r.mediaCategory === topFilter);
+  function resultKey(r) { return r.malId ?? r.mdId ?? r.title; }
+
+  const visibleTrend = trendFilter === "all"
+    ? trendResults
+    : trendResults.filter((r) => r.mediaCategory === trendFilter);
 
   const activeResults =
+    activeTab === "trending" ? visibleTrend :
     activeTab === "search"   ? searchResults :
-    activeTab === "top"      ? filteredTopResults :
     seasonalResults;
 
   const isLoading =
+    activeTab === "trending" ? isLoadingTrend :
     activeTab === "search"   ? isSearching :
-    activeTab === "top"      ? isLoadingTop :
     isLoadingSeasonal;
 
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={s.modal} className="pv-modal-content" onClick={(e) => e.stopPropagation()}>
+
+        {/* Header */}
         <div style={s.header}>
           <h2 style={s.heading}>Discover</h2>
-          <button onClick={onClose} style={s.closeBtn} aria-label="Close">✕</button>
+          <button onClick={onClose} style={s.closeBtn}>✕</button>
         </div>
 
         {/* Tabs */}
@@ -253,34 +323,33 @@ export default function DiscoverModal({
           ))}
         </div>
 
-        {/* Search-specific controls */}
+        {/* Tab-specific controls */}
+        {activeTab === "trending" && (
+          <div style={s.filterRow}>
+            {[["all", "All"], ["comics", "Manga"], ["anime", "Anime"]].map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setTrendFilter(key)}
+                style={{ ...s.filterBtn, ...(trendFilter === key ? s.filterBtnActive : {}) }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {activeTab === "search" && (
           <>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <div style={s.catRow}>
-                {["comics", "anime"].map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => { setSearchCat(cat); setSearchResults([]); setSearched(false); }}
-                    style={{ ...s.catBtn, ...(searchCat === cat ? s.catBtnActive : {}) }}
-                  >
-                    {cat === "anime" ? "Anime" : "Comics"}
-                  </button>
-                ))}
-              </div>
-              {searchCat === "comics" && (
-                <div style={s.catRow}>
-                  {[["mangadex", "MangaDex"], ["jikan", "MAL"]].map(([src, label]) => (
-                    <button
-                      key={src}
-                      onClick={() => { setSearchSource(src); setSearchResults([]); setSearched(false); }}
-                      style={{ ...s.catBtn, ...(searchSource === src ? s.catBtnActive : {}) }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div style={s.filterRow}>
+              {[["comics", "Manga / Manhwa"], ["anime", "Anime"]].map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => { setSearchCat(key); setSearchResults([]); setSearched(false); }}
+                  style={{ ...s.filterBtn, ...(searchCat === key ? s.filterBtnActive : {}) }}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
             <div style={s.searchRow}>
               <input
@@ -294,344 +363,219 @@ export default function DiscoverModal({
               <button
                 onClick={handleSearch}
                 disabled={isSearching || !query.trim()}
-                style={{
-                  ...s.searchBtn,
-                  opacity: isSearching || !query.trim() ? 0.6 : 1,
-                  cursor: isSearching || !query.trim() ? "default" : "pointer",
-                }}
+                style={{ ...s.searchBtn, opacity: isSearching || !query.trim() ? 0.55 : 1 }}
               >
-                {isSearching ? "Searching…" : "Search"}
+                {isSearching ? "…" : "Search"}
               </button>
             </div>
             {searched && !isSearching && searchResults.length === 0 && (
-              <p style={s.emptyMsg}>No results found. Try a different search.</p>
+              <p style={s.emptyMsg}>No results — try a different spelling.</p>
             )}
           </>
         )}
 
-        {/* Top Charts filter */}
-        {activeTab === "top" && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={s.catRow}>
-              {[["all", "All"], ["comics", "Manga"], ["anime", "Anime"]].map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setTopFilter(key)}
-                  style={{ ...s.catBtn, ...(topFilter === key ? s.catBtnActive : {}), padding: "7px 14px", fontSize: "0.85rem" }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <p style={{ ...s.tabDesc, margin: 0 }}>Top-ranked from MyAnimeList</p>
-          </div>
-        )}
         {activeTab === "seasonal" && (
-          <p style={s.tabDesc}>
-            Currently airing anime this season
-          </p>
+          <p style={s.tabDesc}>Currently airing anime this season</p>
         )}
 
         {/* Loading */}
         {isLoading && (
-          <p style={s.emptyMsg}>Loading…</p>
+          <div style={s.loadingWrap}>
+            {[...Array(8)].map((_, i) => <div key={i} style={s.skeleton} />)}
+          </div>
         )}
 
-        {/* Results */}
-        <div style={s.resultList}>
-          {activeResults.map((result) => {
-            const added = isAdded(result);
-            return (
-              <div key={resultKey(result)} style={s.resultItem}>
-                <div style={s.resultCoverWrap}>
-                  {result.image ? (
-                    <img
-                      src={result.image}
-                      alt={result.title}
-                      style={s.resultCover}
-                      onError={(e) => { e.currentTarget.style.display = "none"; }}
-                    />
-                  ) : (
-                    <div style={s.resultNoCover}>No Cover</div>
-                  )}
-                </div>
-
-                <div style={s.resultInfo}>
-                  <p style={s.resultTitle}>
-                    {result.rank ? <span style={s.rankBadge}>#{result.rank}</span> : null}
-                    {result.title}
-                  </p>
-                  <p style={s.resultMeta}>
-                    {result.mediaCategory === "anime" ? "Anime" : "Comics"} · {result.type?.toUpperCase()}
-                    {result.totalProgress ? ` · ${result.mediaCategory === "anime" ? result.totalProgress + " ep" : result.totalProgress + " ch"}` : ""}
-                  </p>
-                  {result.summary ? (
-                    <p style={s.resultSynopsis}>
-                      {result.summary.length > 160
-                        ? result.summary.slice(0, 160) + "…"
-                        : result.summary}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div style={s.resultAction}>
-                  {added ? (
-                    <span style={s.addedBadge}>✓ Added</span>
-                  ) : (
-                    <button onClick={() => handleAdd(result)} style={s.addBtn}>
-                      + Add
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {/* Grid */}
+        {!isLoading && activeResults.length > 0 && (
+          <div style={s.grid}>
+            {activeResults.map((result) => (
+              <CoverCard
+                key={resultKey(result)}
+                result={result}
+                added={isAdded(result)}
+                onAdd={handleAdd}
+              />
+            ))}
+          </div>
+        )}
 
         <p style={s.footer}>
-          {activeTab === "search" && searchSource === "mangadex" && searchCat === "comics"
-            ? "Results from MangaDex"
-            : "Results from MyAnimeList via Jikan API"}
+          {activeTab === "trending" || activeTab === "seasonal"
+            ? "Data from MyAnimeList · Click + Track to add to your library"
+            : "Search powered by MangaDex & MyAnimeList · Click + Track to add"}
         </p>
       </div>
     </div>
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const s = {
   overlay: {
-    position: "fixed",
-    inset: 0,
+    position: "fixed", inset: 0,
     background: "rgba(2,6,23,0.88)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
-    zIndex: 1000,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "16px", zIndex: 1000,
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
   },
   modal: {
-    width: "100%",
-    maxWidth: 720,
-    maxHeight: "90vh",
-    overflowY: "auto",
+    width: "100%", maxWidth: 860,
+    maxHeight: "92vh", overflowY: "auto",
     background: "#0f172a",
     border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 26,
-    padding: 24,
+    borderRadius: 26, padding: 24,
     boxShadow: "0 24px 60px rgba(0,0,0,0.6)",
-    display: "flex",
-    flexDirection: "column",
-    gap: 14,
+    display: "flex", flexDirection: "column", gap: 14,
   },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   heading: {
-    margin: 0,
-    fontSize: "1.5rem",
-    fontWeight: 900,
-    color: "#ffffff",
-    letterSpacing: "-0.03em",
+    margin: 0, fontSize: "1.5rem", fontWeight: 900,
+    color: "#fff", letterSpacing: "-0.03em",
   },
   closeBtn: {
     background: "rgba(255,255,255,0.07)",
     border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: 10,
-    color: "#94a3b8",
-    cursor: "pointer",
-    fontSize: "1rem",
-    width: 36,
-    height: 36,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    borderRadius: 10, color: "#94a3b8", cursor: "pointer",
+    width: 36, height: 36, fontSize: "1rem",
+    display: "flex", alignItems: "center", justifyContent: "center",
   },
   tabRow: {
-    display: "flex",
-    borderRadius: 14,
-    overflow: "hidden",
+    display: "flex", borderRadius: 14, overflow: "hidden",
     border: "1px solid rgba(255,255,255,0.08)",
   },
   tab: {
-    flex: 1,
-    padding: "10px 0",
+    flex: 1, padding: "10px 0",
     background: "rgba(255,255,255,0.04)",
-    color: "#94a3b8",
-    border: "none",
-    fontWeight: 700,
-    fontSize: "0.88rem",
-    cursor: "pointer",
+    color: "#94a3b8", border: "none",
+    fontWeight: 700, fontSize: "0.88rem", cursor: "pointer",
   },
   tabActive: {
     background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
     color: "#fff",
   },
-  catRow: {
-    display: "flex",
-    gap: 8,
-  },
-  catBtn: {
-    padding: "9px 18px",
-    borderRadius: 999,
+  filterRow: { display: "flex", gap: 8, flexWrap: "wrap" },
+  filterBtn: {
+    padding: "8px 16px", borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.08)",
     background: "rgba(255,255,255,0.05)",
-    color: "#dbe4f0",
-    cursor: "pointer",
-    fontWeight: 700,
-    fontSize: "0.9rem",
+    color: "#dbe4f0", cursor: "pointer",
+    fontWeight: 700, fontSize: "0.88rem",
   },
-  catBtnActive: {
+  filterBtnActive: {
     background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-    color: "#fff",
-    border: "none",
-    boxShadow: "0 8px 20px rgba(99,102,241,0.3)",
+    color: "#fff", border: "none",
+    boxShadow: "0 6px 16px rgba(99,102,241,0.3)",
   },
-  searchRow: {
-    display: "flex",
-    gap: 10,
-  },
+  searchRow: { display: "flex", gap: 10 },
   searchInput: {
-    flex: 1,
-    boxSizing: "border-box",
-    borderRadius: 14,
-    outline: "none",
-    fontSize: "1rem",
-    padding: "12px 16px",
-    color: "#f8fafc",
-    background: "rgba(255,255,255,0.08)",
+    flex: 1, boxSizing: "border-box", borderRadius: 14,
+    outline: "none", fontSize: "1rem", padding: "12px 16px",
+    color: "#f8fafc", background: "rgba(255,255,255,0.08)",
     border: "1px solid rgba(255,255,255,0.1)",
-    boxShadow: "none",
   },
   searchBtn: {
     background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-    color: "#fff",
-    border: "none",
-    borderRadius: 14,
-    padding: "12px 20px",
-    fontWeight: 800,
-    whiteSpace: "nowrap",
-    boxShadow: "0 8px 20px rgba(99,102,241,0.22)",
+    color: "#fff", border: "none", borderRadius: 14,
+    padding: "12px 22px", fontWeight: 800, whiteSpace: "nowrap",
+    boxShadow: "0 8px 20px rgba(99,102,241,0.22)", cursor: "pointer",
+    fontSize: "0.95rem",
+  },
+  tabDesc: { margin: 0, color: "#64748b", fontSize: "0.88rem" },
+  emptyMsg: { color: "#94a3b8", textAlign: "center", margin: 0 },
+  loadingWrap: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+    gap: 12,
+  },
+  skeleton: {
+    aspectRatio: "2 / 3", borderRadius: 14,
+    background: "linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.07))",
+    animation: "pulse 1.5s ease-in-out infinite",
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+    gap: 14,
+  },
+  // CoverCard styles
+  card: { display: "flex", flexDirection: "column", gap: 6 },
+  coverWrap: {
+    width: "100%", aspectRatio: "2 / 3",
+    borderRadius: 14, overflow: "hidden",
+    background: "#0f172a",
+    border: "1px solid rgba(255,255,255,0.07)",
+    position: "relative",
     cursor: "pointer",
   },
-  tabDesc: {
-    margin: 0,
-    color: "#64748b",
-    fontSize: "0.88rem",
+  coverImg: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
+  noCover: {
+    width: "100%", height: "100%",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: "linear-gradient(135deg, #1e293b, #0f172a)",
   },
-  emptyMsg: {
-    color: "#94a3b8",
-    textAlign: "center",
-    margin: 0,
-    padding: "12px 0",
-  },
-  resultList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  },
-  resultItem: {
-    display: "flex",
-    gap: 14,
-    alignItems: "flex-start",
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.07)",
-    borderRadius: 16,
-    padding: 12,
-  },
-  resultCoverWrap: {
-    width: 58,
-    aspectRatio: "2 / 3",
-    borderRadius: 8,
-    overflow: "hidden",
-    background: "#1e293b",
-    flexShrink: 0,
-  },
-  resultCover: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    display: "block",
-  },
-  resultNoCover: {
-    width: "100%",
-    height: "100%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#64748b",
-    fontSize: "0.65rem",
-    fontWeight: 700,
-  },
-  resultInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  resultTitle: {
-    margin: "0 0 4px 0",
-    fontSize: "0.95rem",
-    fontWeight: 800,
-    color: "#f1f5f9",
-    display: "flex",
-    alignItems: "center",
-    gap: 7,
+  noCoverInitial: {
+    fontSize: "2.5rem", fontWeight: 900,
+    color: "rgba(99,102,241,0.4)",
   },
   rankBadge: {
-    flexShrink: 0,
-    background: "rgba(245,158,11,0.2)",
-    color: "#fbbf24",
-    borderRadius: 6,
-    padding: "1px 6px",
-    fontSize: "0.72rem",
-    fontWeight: 800,
+    position: "absolute", top: 7, left: 7,
+    background: "rgba(245,158,11,0.9)",
+    color: "#fff", borderRadius: 6,
+    padding: "2px 7px", fontSize: "0.68rem", fontWeight: 800,
   },
-  resultMeta: {
-    margin: "0 0 5px 0",
-    fontSize: "0.76rem",
-    color: "#64748b",
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-  },
-  resultSynopsis: {
-    margin: 0,
-    fontSize: "0.82rem",
-    color: "#94a3b8",
-    lineHeight: 1.5,
-  },
-  resultAction: {
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "flex-start",
-    paddingTop: 2,
+  cardOverlay: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    background: "linear-gradient(to top, rgba(2,6,23,0.92) 0%, transparent 100%)",
+    display: "flex", justifyContent: "center",
+    paddingBottom: 10, paddingTop: 28,
   },
   addBtn: {
-    background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-    color: "#fff",
-    border: "none",
-    borderRadius: 10,
-    padding: "8px 14px",
-    fontWeight: 800,
-    cursor: "pointer",
-    fontSize: "0.85rem",
-    whiteSpace: "nowrap",
-    boxShadow: "0 6px 16px rgba(99,102,241,0.25)",
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+    color: "#fff", border: "none", borderRadius: 8,
+    padding: "6px 14px", fontWeight: 800, fontSize: "0.8rem",
+    cursor: "pointer", boxShadow: "0 4px 12px rgba(99,102,241,0.4)",
   },
   addedBadge: {
-    background: "rgba(34,197,94,0.15)",
+    background: "rgba(34,197,94,0.2)",
     color: "#4ade80",
-    border: "1px solid rgba(34,197,94,0.25)",
-    borderRadius: 10,
-    padding: "8px 12px",
-    fontWeight: 800,
-    fontSize: "0.85rem",
-    whiteSpace: "nowrap",
+    border: "1px solid rgba(34,197,94,0.3)",
+    borderRadius: 8, padding: "5px 10px",
+    fontWeight: 800, fontSize: "0.78rem",
   },
+  cardTitle: {
+    margin: 0, fontSize: "0.82rem", fontWeight: 700,
+    color: "#e2e8f0", lineHeight: 1.3,
+    display: "-webkit-box",
+    WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  },
+  cardMeta: {
+    margin: 0, fontSize: "0.72rem", fontWeight: 700,
+    color: "#475569", textTransform: "uppercase", letterSpacing: "0.04em",
+  },
+  // StatusPicker
+  pickerWrap: {
+    position: "absolute", inset: 0,
+    background: "rgba(2,6,23,0.92)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    borderRadius: 14,
+  },
+  picker: {
+    display: "flex", flexDirection: "column", gap: 6,
+    padding: "10px 8px", width: "90%",
+  },
+  pickerBtn: {
+    display: "flex", alignItems: "center", gap: 8,
+    background: "rgba(255,255,255,0.07)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 10, padding: "9px 12px",
+    cursor: "pointer", color: "#f1f5f9",
+    fontWeight: 700, fontSize: "0.82rem",
+  },
+  pickerLabel: { flex: 1, textAlign: "left" },
   footer: {
-    margin: 0,
-    textAlign: "center",
-    color: "#475569",
-    fontSize: "0.78rem",
+    margin: 0, textAlign: "center",
+    color: "#334155", fontSize: "0.75rem",
   },
 };
