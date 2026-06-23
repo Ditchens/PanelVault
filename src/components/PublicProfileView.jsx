@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { normalizeSeries, formatTypeLabel } from "../lib/seriesUtils";
 import { STATUS_OPTIONS, getStatusOptionLabel } from "../lib/constants";
@@ -124,6 +124,27 @@ export default function PublicProfileView({ username, onClose, currentUser }) {
     };
   }
 
+  const statsData = useMemo(() => {
+    if (!series.length) return null;
+    const comicsCount = series.filter(i => (i.mediaCategory || "comics") === "comics").length;
+    const animeCount = series.filter(i => i.mediaCategory === "anime").length;
+    const rated = series.filter(i => i.rating != null);
+    const avgRating = rated.length > 0
+      ? (rated.reduce((sum, i) => sum + Number(i.rating), 0) / rated.length).toFixed(1)
+      : null;
+    const totalCh = series
+      .filter(i => (i.mediaCategory || "comics") === "comics")
+      .reduce((sum, i) => sum + (i.currentProgress || 0), 0);
+    const totalEp = series
+      .filter(i => i.mediaCategory === "anime")
+      .reduce((sum, i) => sum + (i.currentProgress || 0), 0);
+    return { comicsCount, animeCount, avgRating, totalCh, totalEp };
+  }, [series]);
+
+  const currentlyReading = useMemo(() =>
+    series.filter(i => (i.mediaCategory || "comics") === activeCategory && i.status === "reading"),
+  [series, activeCategory]);
+
   const filtered = series.filter((item) => {
     if ((item.mediaCategory || "comics") !== activeCategory) return false;
     if (activeStatus === "all") return true;
@@ -202,6 +223,72 @@ export default function PublicProfileView({ username, onClose, currentUser }) {
             ))}
           </div>
         </div>
+
+        {/* Stats row */}
+        {statsData && (
+          <div style={s.statsRow}>
+            {statsData.comicsCount > 0 && (
+              <div style={s.statItem}>
+                <p style={s.statValue}>{statsData.comicsCount}</p>
+                <p style={s.statLabel}>Comics</p>
+              </div>
+            )}
+            {statsData.animeCount > 0 && (
+              <div style={s.statItem}>
+                <p style={s.statValue}>{statsData.animeCount}</p>
+                <p style={s.statLabel}>Anime</p>
+              </div>
+            )}
+            {statsData.totalCh > 0 && (
+              <div style={s.statItem}>
+                <p style={s.statValue}>{statsData.totalCh}</p>
+                <p style={s.statLabel}>Ch. Read</p>
+              </div>
+            )}
+            {statsData.totalEp > 0 && (
+              <div style={s.statItem}>
+                <p style={s.statValue}>{statsData.totalEp}</p>
+                <p style={s.statLabel}>Ep. Watched</p>
+              </div>
+            )}
+            {statsData.avgRating && (
+              <div style={s.statItem}>
+                <p style={{ ...s.statValue, color: "#fbbf24" }}>★ {statsData.avgRating}</p>
+                <p style={s.statLabel}>Avg Rating</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Currently reading shelf */}
+        {currentlyReading.length > 0 && (
+          <div style={s.currentlyReadingSection}>
+            <p style={s.sectionTitle}>
+              Currently {activeCategory === "anime" ? "Watching" : "Reading"}
+            </p>
+            <div style={s.shelfScroll}>
+              {currentlyReading.slice(0, 10).map(item => (
+                <div key={item.id} style={s.shelfCard}>
+                  <div style={s.shelfCoverWrap}>
+                    {item.image ? (
+                      <img src={item.image} alt={item.title} style={s.shelfCoverImg}
+                        onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                    ) : (
+                      <div style={s.shelfNoCover}>No Cover</div>
+                    )}
+                  </div>
+                  <p style={s.shelfTitle}>{item.title}</p>
+                  {item.currentProgress > 0 && (
+                    <p style={s.shelfProgress}>
+                      {item.mediaCategory === "anime" ? "Ep" : "Ch"} {item.currentProgress}
+                      {item.totalProgress ? `/${item.totalProgress}` : ""}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Status filters */}
         <div style={s.filterRow}>
@@ -457,5 +544,99 @@ const s = {
     textAlign: "center",
     color: "#475569",
     fontSize: "0.8rem",
+  },
+  statsRow: {
+    display: "flex",
+    gap: 28,
+    flexWrap: "wrap",
+    marginBottom: 20,
+    padding: "16px 20px",
+    background: "rgba(255,255,255,0.03)",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: 18,
+  },
+  statItem: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+    minWidth: 52,
+  },
+  statValue: {
+    margin: 0,
+    fontSize: "1.5rem",
+    fontWeight: 900,
+    color: "#f1f5f9",
+    letterSpacing: "-0.03em",
+  },
+  statLabel: {
+    margin: 0,
+    fontSize: "0.72rem",
+    fontWeight: 700,
+    color: "#475569",
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+  },
+  currentlyReadingSection: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    margin: "0 0 12px",
+    fontSize: "0.82rem",
+    fontWeight: 800,
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: "0.07em",
+  },
+  shelfScroll: {
+    display: "flex",
+    gap: 12,
+    overflowX: "auto",
+    paddingBottom: 6,
+    scrollbarWidth: "none",
+    msOverflowStyle: "none",
+  },
+  shelfCard: {
+    flexShrink: 0,
+    width: 96,
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+  },
+  shelfCoverWrap: {
+    width: 96,
+    aspectRatio: "0.72 / 1",
+    background: "#0f172a",
+    borderRadius: 12,
+    overflow: "hidden",
+    border: "1px solid rgba(255,255,255,0.08)",
+    position: "relative",
+  },
+  shelfCoverImg: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
+  shelfNoCover: {
+    width: "100%",
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#475569",
+    fontSize: "0.7rem",
+    fontWeight: 700,
+  },
+  shelfTitle: {
+    margin: 0,
+    fontSize: "0.76rem",
+    fontWeight: 700,
+    color: "#e2e8f0",
+    lineHeight: 1.3,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  },
+  shelfProgress: {
+    margin: 0,
+    fontSize: "0.7rem",
+    color: "#475569",
+    fontWeight: 700,
   },
 };

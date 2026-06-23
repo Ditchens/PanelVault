@@ -3,7 +3,7 @@ import { ACTIVITY_KEY } from "./SettingsModal";
 
 const GOAL_KEY = "panelvault_weekly_goal";
 
-export default function Dashboard({ series, profile, onOpenSeries, onDiscover, onViewLibrary }) {
+export default function Dashboard({ series, profile, onOpenSeries, onDiscover, onImport, onViewLibrary }) {
   const activityLog = useMemo(() => {
     try { return JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]"); } catch { return []; }
   }, [series]); // refresh when series changes (proxy for user action)
@@ -129,8 +129,21 @@ export default function Dashboard({ series, profile, onOpenSeries, onDiscover, o
         <div style={s.empty}>
           <p style={s.emptyIcon}>📚</p>
           <p style={s.emptyTitle}>Your library is empty</p>
-          <p style={s.emptyText}>Add series manually or discover something new.</p>
-          <button onClick={onDiscover} style={s.discoverBtn}>Discover Series</button>
+          <p style={s.emptyText}>Start building your collection — import, discover, or add manually.</p>
+          <div style={s.emptyActions}>
+            {onImport && (
+              <button onClick={onImport} style={s.emptyActionBtn}>
+                <span style={s.emptyActionIcon}>📥</span>
+                <span style={s.emptyActionLabel}>Import from MAL</span>
+                <span style={s.emptyActionDesc}>Sync your existing library</span>
+              </button>
+            )}
+            <button onClick={onDiscover} style={s.emptyActionBtn}>
+              <span style={s.emptyActionIcon}>🔍</span>
+              <span style={s.emptyActionLabel}>Discover Series</span>
+              <span style={s.emptyActionDesc}>Browse top charts & trending</span>
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -425,7 +438,37 @@ const s = {
     fontWeight: 800,
     color: "#f1f5f9",
   },
-  emptyText: { margin: 0, color: "#475569", fontSize: "0.9rem" },
+  emptyText: { margin: "0 0 20px", color: "#475569", fontSize: "0.9rem" },
+  emptyActions: {
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+  emptyActionBtn: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+    background: "rgba(99,102,241,0.1)",
+    border: "1px solid rgba(99,102,241,0.25)",
+    borderRadius: 18,
+    padding: "18px 22px",
+    cursor: "pointer",
+    minWidth: 140,
+    textAlign: "center",
+  },
+  emptyActionIcon: { fontSize: "1.5rem" },
+  emptyActionLabel: {
+    color: "#f1f5f9",
+    fontWeight: 800,
+    fontSize: "0.9rem",
+  },
+  emptyActionDesc: {
+    color: "#64748b",
+    fontSize: "0.78rem",
+    fontWeight: 500,
+  },
   goalEmpty: {
     background: "rgba(99,102,241,0.08)",
     border: "1px dashed rgba(99,102,241,0.3)",
@@ -520,16 +563,5 @@ const s = {
     fontWeight: 700,
     fontSize: "0.78rem",
     cursor: "pointer",
-  },
-  discoverBtn: {
-    marginTop: 8,
-    background: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)",
-    color: "#fff",
-    border: "none",
-    borderRadius: 14,
-    padding: "12px 22px",
-    fontWeight: 800,
-    cursor: "pointer",
-    fontSize: "0.95rem",
   },
 };

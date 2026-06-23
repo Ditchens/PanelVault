@@ -8,8 +8,6 @@ import {
   STATUS_OPTIONS,
   COMICS_TYPE_OPTIONS,
   ANIME_TYPE_OPTIONS,
-  COMICS_TAG_OPTIONS,
-  ANIME_TAG_OPTIONS,
   getStatusOptionLabel,
 } from "./lib/constants";
 import {
@@ -314,16 +312,20 @@ export default function PanelVaultApp() {
 
   // Kept for manual trigger via menu; auto-trigger is handled by the useEffect below
 
-  // Auto-trigger chapter check on first load (regardless of manual setting)
+  // Auto-trigger chapter check + cover fetch on first load
   const chapterCheckDone = useRef(false);
   useEffect(() => {
     if (series.length === 0 || !currentUser || chapterCheckDone.current) return;
     chapterCheckDone.current = true;
     const today = new Date().toISOString().split("T")[0];
     const lastCheck = localStorage.getItem("panelvault_last_update_check");
-    if (lastCheck === today) return; // already ran today
-    localStorage.setItem("panelvault_last_update_check", today);
-    checkForUpdates(true);
+    if (lastCheck !== today) {
+      localStorage.setItem("panelvault_last_update_check", today);
+      checkForUpdates(true);
+    }
+    // Silently fill in any missing covers
+    const missingCovers = series.some((s) => !s.image);
+    if (missingCovers) autoFetchMissingCovers();
   }, [series.length > 0, !!currentUser]);
 
   async function loadProfile() {
@@ -502,54 +504,81 @@ export default function PanelVaultApp() {
 
   // ── Cover fetching ────────────────────────────────────────────────────────
 
-  async function fetchCover(seriesTitle) {
-    // Try MangaDex first (higher quality covers)
+  async function fetchCover(seriesTitle, mediaCategory = "comics") {
+    // Anime → Jikan/MAL
+    if (mediaCategory === "anime") {
+      try {
+        const res = await fetch(
+          `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(seriesTitle)}&limit=1`
+        );
+        const data = await res.json();
+        return data?.data?.[0]?.images?.jpg?.large_image_url
+          || data?.data?.[0]?.images?.jpg?.image_url
+          || "";
+      } catch { return ""; }
+    }
+
+    // Comics → MangaDex (512px cover, fall back to Jikan)
     try {
       const searchRes = await fetch(
-        `https://api.mangadex.org/manga?title=${encodeURIComponent(seriesTitle)}&limit=1` +
-        `&contentRating[]=safe&contentRating[]=suggestive`
+        `https://api.mangadex.org/manga?title=${encodeURIComponent(seriesTitle)}&limit=3` +
+        `&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica`
       );
       if (searchRes.ok) {
         const searchData = await searchRes.json();
-        const mangaId = searchData?.data?.[0]?.id;
+        const manga = searchData?.data?.[0];
+        const mangaId = manga?.id;
         if (mangaId) {
           const coverRes = await fetch(
-            `https://api.mangadex.org/cover?manga[]=${mangaId}&limit=1`
+            `https://api.mangadex.org/cover?manga[]=${mangaId}&limit=1&order[volume]=desc`
           );
           if (coverRes.ok) {
             const coverData = await coverRes.json();
             const filename = coverData?.data?.[0]?.attributes?.fileName;
             if (filename) {
-              return `https://uploads.mangadex.org/covers/${mangaId}/${filename}.256.jpg`;
+              return `https://uploads.mangadex.org/covers/${mangaId}/${filename}.512.jpg`;
             }
           }
         }
       }
     } catch {}
 
-    // Fall back to Jikan/MAL
+    // Fallback: Jikan manga
     try {
       const res = await fetch(
         `https://api.jikan.moe/v4/manga?q=${encodeURIComponent(seriesTitle)}&limit=1`
       );
       const data = await res.json();
-      return data?.data?.[0]?.images?.jpg?.image_url || "";
-    } catch {
-      return "";
-    }
+      return data?.data?.[0]?.images?.jpg?.large_image_url
+        || data?.data?.[0]?.images?.jpg?.image_url
+        || "";
+    } catch { return ""; }
   }
 
   async function autoFetchMissingCovers() {
+    const missing = series.filter((s) => !s.image);
+    if (!missing.length) return;
     setIsFetchingCovers(true);
-    let updated = [...series];
-    for (let i = 0; i < updated.length; i++) {
-      if (!updated[i].image) {
-        const img = await fetchCover(updated[i].title);
-        if (img) updated[i] = { ...updated[i], image: img };
-        await new Promise((r) => setTimeout(r, 400));
-      }
+
+    // Accumulating working copy so each batch save includes all previous finds
+    let current = [...series];
+    const BATCH = 4;
+
+    for (let i = 0; i < missing.length; i += BATCH) {
+      const batch = missing.slice(i, i + BATCH);
+      const results = await Promise.all(
+        batch.map((s) => fetchCover(s.title, s.mediaCategory))
+      );
+      let anyFound = false;
+      batch.forEach((s, idx) => {
+        if (results[idx]) {
+          const pos = current.findIndex((c) => c.id === s.id);
+          if (pos >= 0) { current[pos] = { ...current[pos], image: results[idx] }; anyFound = true; }
+        }
+      });
+      if (anyFound) await persistSeries([...current], { successMessage: "" });
+      if (i + BATCH < missing.length) await new Promise((r) => setTimeout(r, 600));
     }
-    await persistSeries(updated, { successMessage: "Covers updated." });
     setIsFetchingCovers(false);
   }
 
@@ -842,7 +871,6 @@ export default function PanelVaultApp() {
   // ── Derived ───────────────────────────────────────────────────────────────
 
   const typeOptions = activeMediaCategory === "anime" ? ANIME_TYPE_OPTIONS : COMICS_TYPE_OPTIONS;
-  const tagOptions  = activeMediaCategory === "anime" ? ANIME_TAG_OPTIONS  : COMICS_TAG_OPTIONS;
   const activeList  = lists.find((l) => l.id === activeListId);
 
   const pageTitle = activeListId
@@ -1274,6 +1302,7 @@ ${anime.map(animeEntry).join("\n")}
           profile={profile}
           onOpenSeries={setSelectedItem}
           onDiscover={() => setShowDiscover(true)}
+          onImport={() => setShowImport(true)}
           onViewLibrary={(status) => {
             setActiveMainView("library");
             setActiveStatus(status);
@@ -1294,45 +1323,12 @@ ${anime.map(animeEntry).join("\n")}
                 : ""}
               {!activeListId && activeTag !== "all" ? ` · ${activeTag}` : ""}
             </h1>
-            {!isMobile && (
-              <p style={st.pageSubtitle}>Click any card to view details.</p>
-            )}
           </div>
 
           <div style={{ ...st.heroActions, ...(isMobile ? { width: "100%", flexDirection: "row", flexWrap: "wrap" } : {}) }}>
-            {!isMobile && (
-              <div style={st.cloudStatusWrap}>
-                <div style={st.cloudStatusPill}>Cloud: {cloudStatusLabel()}</div>
-                <p style={st.cloudStatusText}>{cloudMessage}</p>
-              </div>
-            )}
-
             <button onClick={() => setShowDiscover(true)} style={st.discoverButton}>
               Discover
             </button>
-
-            {!cloudHasData && series.length > 0 && (
-              <button
-                onClick={importLocalLibraryToCloud}
-                disabled={isImportingToCloud || isCloudSyncing || !hasLoadedCloud}
-                style={{ ...st.secondaryButton, opacity: isImportingToCloud ? 0.7 : 1 }}
-              >
-                {isImportingToCloud ? "Importing…" : "Import to Cloud"}
-              </button>
-            )}
-
-            {!isMobile && (
-              <>
-                <button onClick={clearAllCovers} style={st.ghostButton}>Clear Covers</button>
-                <button
-                  onClick={autoFetchMissingCovers}
-                  disabled={isFetchingCovers || isCloudSyncing}
-                  style={{ ...st.primaryButton, opacity: isFetchingCovers ? 0.7 : 1 }}
-                >
-                  {isFetchingCovers ? "Fetching…" : "Auto Fetch Covers"}
-                </button>
-              </>
-            )}
           </div>
         </section>
 
@@ -1380,61 +1376,31 @@ ${anime.map(animeEntry).join("\n")}
           </div>
         )}
 
-        {/* Type + tag filter chips */}
-        {!activeListId && (
-          <>
-            <section style={{ ...st.filterRow, ...(isMobile ? { gap: 7, marginBottom: 8 } : {}) }}>
-              {typeOptions.map((type) => (
-                <button
-                  key={type.key}
-                  onClick={() => setActiveType(type.key)}
-                  style={{
-                    ...st.typeChip,
-                    ...(activeType === type.key ? st.typeChipActive : {}),
-                    ...(isMobile ? { padding: "8px 10px", fontSize: "0.82rem" } : {}),
-                  }}
-                >
-                  {type.label}
-                  <span style={st.typeChipCount}>{getCountByType(type.key)}</span>
-                </button>
-              ))}
-            </section>
-
-            <section style={{ ...st.filterRow, ...(isMobile ? { gap: 7, marginBottom: 10 } : {}) }}>
+        {/* Type filter chips — only show types that have entries */}
+        {!activeListId && typeOptions.filter(t => t.key === "all" || getCountByType(t.key) > 0).length > 2 && (
+          <section style={{ ...st.filterRow, ...(isMobile ? { gap: 7, marginBottom: 8 } : {}) }}>
+            {typeOptions.filter(t => t.key === "all" || getCountByType(t.key) > 0).map((type) => (
               <button
-                onClick={() => setActiveTag("all")}
+                key={type.key}
+                onClick={() => setActiveType(type.key)}
                 style={{
                   ...st.typeChip,
-                  ...(activeTag === "all" ? st.typeChipActive : {}),
-                  ...(isMobile ? { padding: "7px 10px", fontSize: "0.8rem" } : {}),
+                  ...(activeType === type.key ? st.typeChipActive : {}),
+                  ...(isMobile ? { padding: "8px 10px", fontSize: "0.82rem" } : {}),
                 }}
               >
-                All Tags
+                {type.label}
+                <span style={st.typeChipCount}>{getCountByType(type.key)}</span>
               </button>
-              {tagOptions.map((tag) => (
-                <button
-                  key={tag}
-                  onClick={() => setActiveTag(tag)}
-                  style={{
-                    ...st.typeChip,
-                    ...(activeTag === tag ? st.typeChipActive : {}),
-                    ...(isMobile ? { padding: "7px 10px", fontSize: "0.8rem" } : {}),
-                  }}
-                >
-                  {tag}
-                </button>
-              ))}
-            </section>
-          </>
+            ))}
+          </section>
         )}
 
-        {/* Add form */}
-        {!activeListId && (
-          <section style={st.addPanel}>
-            <div style={st.addPanelHeader}>
-              <h2 style={st.sectionTitle}>
-                Add {activeMediaCategory === "anime" ? "Anime" : "Series"}
-              </h2>
+        {/* Grid */}
+        <section>
+          <div style={st.sectionHeader}>
+            <h2 style={st.sectionHeading}>{filteredAndSorted.length} results</h2>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <select
                 value={sortOption}
                 onChange={(e) => setSortOption(e.target.value)}
@@ -1446,46 +1412,6 @@ ${anime.map(animeEntry).join("\n")}
                 <option value="za">Z–A</option>
                 <option value="rating">Top Rated</option>
               </select>
-            </div>
-
-            <div style={isMobile ? st.formGridMobile : st.formGrid}>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addSeries()}
-                placeholder="Title"
-                style={st.input}
-              />
-              <input
-                value={image}
-                onChange={(e) => setImage(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addSeries()}
-                placeholder="Cover URL (optional)"
-                style={st.input}
-              />
-              <select value={newType} onChange={(e) => setNewType(e.target.value)} style={st.input}>
-                <option value="">Type (optional)</option>
-                {typeOptions.filter((o) => o.key !== "all").map((o) => (
-                  <option key={o.key} value={o.key}>{o.label}</option>
-                ))}
-              </select>
-              <select value={newStatus} onChange={(e) => setNewStatus(e.target.value)} style={st.input}>
-                {STATUS_OPTIONS.filter((o) => o.key !== "all" && o.key !== "needsReview").map((o) => (
-                  <option key={o.key} value={o.key}>
-                    {getStatusOptionLabel(o, activeMediaCategory)}
-                  </option>
-                ))}
-              </select>
-              <button onClick={addSeries} style={st.primaryButton}>Add</button>
-            </div>
-          </section>
-        )}
-
-        {/* Grid */}
-        <section>
-          <div style={st.sectionHeader}>
-            <h2 style={st.sectionHeading}>{filteredAndSorted.length} results</h2>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {activeListId && (
                 <button onClick={() => setActiveListId(null)} style={st.exitListBtn}>
                   ← Back
@@ -1516,7 +1442,7 @@ ${anime.map(animeEntry).join("\n")}
               </div>
               <p style={st.emptyTitle}>
                 {activeListId ? "This list is empty" :
-                 activeStatus === "all" ? "Your library is empty" :
+                 activeStatus === "all" ? `No ${activeMediaCategory === "anime" ? "anime" : "manga"} tracked yet` :
                  activeStatus === "reading" ? "Nothing in progress" :
                  activeStatus === "finished" ? "Nothing finished yet" :
                  activeStatus === "readNext" ? "Queue is empty" :
@@ -1525,13 +1451,13 @@ ${anime.map(animeEntry).join("\n")}
                  "Nothing here yet"}
               </p>
               <p style={st.emptyText}>
-                {activeListId ? "Add series to this list from their detail card." :
-                 activeStatus === "all" ? "Tap Discover to find something to read." :
-                 activeStatus === "reading" ? "Move a series to Reading to track it here." :
+                {activeListId ? "Open a series and add it to this list from its detail view." :
+                 activeStatus === "all" ? `Use Discover to find ${activeMediaCategory === "anime" ? "anime" : "manga"} to track.` :
+                 activeStatus === "reading" ? "Change a series status to Reading from its detail view." :
                  activeStatus === "finished" ? "Completed series will appear here." :
-                 activeStatus === "readNext" ? "Add series to your queue and they'll show up here." :
+                 activeStatus === "readNext" ? "Save series to your backlog and they'll show up here." :
                  activeStatus === "favorites" ? "Tap ★ on any card to favourite it." :
-                 "Try another filter or add a new title above."}
+                 "Try a different filter."}
               </p>
               {activeStatus === "all" && !activeListId && (
                 <button onClick={() => setShowDiscover(true)} style={st.emptyDiscoverBtn}>
@@ -1571,14 +1497,6 @@ ${anime.map(animeEntry).join("\n")}
                         </div>
 
                         <div style={st.cardTypeBadge}>{formatTypeLabel(item.type)}</div>
-
-                        {(item.mediaCategory || "comics") === "anime" && (
-                          <div style={st.animeBadge}>Anime</div>
-                        )}
-
-                        {item.needsReview && (
-                          <div style={st.reviewBadge}>Review</div>
-                        )}
 
                         {item.rating != null && (
                           <div style={st.ratingBadge}>★ {item.rating}</div>
@@ -2358,9 +2276,21 @@ const st = {
   compactSelect: {
     ...ctrl,
     width: "auto",
-    minWidth: 140,
+    minWidth: 120,
     padding: "10px 12px",
     fontSize: "0.9rem",
+  },
+  mobileAddToggle: {
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 12,
+    padding: "9px 16px",
+    fontWeight: 800,
+    fontSize: "0.88rem",
+    cursor: "pointer",
+    boxShadow: "0 6px 16px rgba(99,102,241,0.25)",
+    flexShrink: 0,
   },
   formGrid: {
     display: "grid",

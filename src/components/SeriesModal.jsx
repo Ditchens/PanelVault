@@ -64,6 +64,8 @@ export default function SeriesModal({
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [localProgress, setLocalProgress] = useState(null);
+  const [localStatus, setLocalStatus] = useState(null);
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef(null);
 
@@ -84,6 +86,8 @@ export default function SeriesModal({
     setEditTotalProgress(selectedItem.totalProgress != null ? String(selectedItem.totalProgress) : "");
     setEditRating(selectedItem.rating ?? null);
     setEditNotes(loadNote(selectedItem.id));
+    setLocalProgress(null);
+    setLocalStatus(null);
     setSaveError("");
   }, [selectedItem?.id]);
 
@@ -134,6 +138,44 @@ export default function SeriesModal({
       saveNote(selectedItem.id, editNotes);
       setDetailMode("info");
     }
+  }
+
+  function quickStatusChange(newStatus) {
+    setLocalStatus(newStatus);
+    onSave(selectedItem.id, {
+      title: selectedItem.title,
+      image: selectedItem.image || "",
+      mediaCategory: selectedItem.mediaCategory || "comics",
+      type: selectedItem.type || "",
+      status: newStatus,
+      summary: selectedItem.summary || "",
+      tags: selectedItem.tags || [],
+      altTitles: selectedItem.altTitles || [],
+      needsReview: false,
+      currentProgress: selectedItem.currentProgress || 0,
+      totalProgress: selectedItem.totalProgress ?? null,
+      rating: selectedItem.rating ?? null,
+    });
+  }
+
+  function quickIncrement(n) {
+    const base = localProgress ?? selectedItem?.currentProgress ?? 0;
+    const newProg = Math.max(0, base + n);
+    setLocalProgress(newProg);
+    onSave(selectedItem.id, {
+      title: selectedItem.title,
+      image: selectedItem.image || "",
+      mediaCategory: selectedItem.mediaCategory || "comics",
+      type: selectedItem.type || "",
+      status: selectedItem.status || "notRead",
+      summary: selectedItem.summary || "",
+      tags: selectedItem.tags || [],
+      altTitles: selectedItem.altTitles || [],
+      needsReview: !!selectedItem.needsReview,
+      currentProgress: newProg,
+      totalProgress: selectedItem.totalProgress ?? null,
+      rating: selectedItem.rating ?? null,
+    });
   }
 
   async function uploadCover(file) {
@@ -207,6 +249,12 @@ export default function SeriesModal({
     lists.filter((l) => l.itemIds.includes(selectedItem?.id)).map((l) => l.id)
   );
 
+  const displayedProgress = localProgress ?? selectedItem?.currentProgress ?? 0;
+  const displayedStatus = localStatus ?? selectedItem?.status ?? "notRead";
+  const progressPct = selectedItem?.totalProgress
+    ? Math.min(100, (displayedProgress / selectedItem.totalProgress) * 100)
+    : null;
+
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={s.modal} className="pv-modal-content" onClick={(e) => e.stopPropagation()}>
@@ -214,6 +262,18 @@ export default function SeriesModal({
         {/* ── INFO VIEW ────────────────────────────────────────────── */}
         {detailMode === "info" ? (
           <>
+            {/* Modal header row */}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
+              <button
+                onClick={() => setDetailMode("edit")}
+                style={s.iconBtn}
+                title="Edit details"
+              >
+                ✎
+              </button>
+              <button onClick={onClose} style={s.iconBtn} title="Close">✕</button>
+            </div>
+
             <div style={s.top}>
               <div style={s.previewWrap}>
                 {selectedItem.image ? (
@@ -238,25 +298,53 @@ export default function SeriesModal({
                   {itemCat === "anime" ? "Anime" : "Comics"}
                 </div>
                 <h2 style={s.title}>{selectedItem.title}</h2>
-                <p style={s.meta}>Type: <strong>{formatTypeLabel(selectedItem.type)}</strong></p>
-                <p style={s.meta}>
-                  Status:{" "}
-                  <strong>{formatStatusLabel(selectedItem.status, itemCat)}</strong>
-                </p>
-                <p style={s.meta}>
-                  Review:{" "}
-                  <strong>{selectedItem.needsReview ? "Needs Review" : "Ready"}</strong>
-                </p>
-                {selectedItem.currentProgress > 0 || selectedItem.totalProgress != null ? (
-                  <p style={s.meta}>
-                    Progress:{" "}
-                    <strong>
-                      {itemCat === "anime" ? "Ep. " : "Ch. "}
-                      {selectedItem.currentProgress}
-                      {selectedItem.totalProgress != null ? ` / ${selectedItem.totalProgress}` : ""}
-                    </strong>
-                  </p>
-                ) : null}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+                  <select
+                    value={displayedStatus}
+                    onChange={(e) => quickStatusChange(e.target.value)}
+                    style={{
+                      ...s.statusBadge,
+                      ...(statusColors[displayedStatus] || statusColors.notRead),
+                      cursor: "pointer",
+                      appearance: "none",
+                      WebkitAppearance: "none",
+                      paddingRight: 26,
+                      backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E\")",
+                      backgroundRepeat: "no-repeat",
+                      backgroundPosition: "right 8px center",
+                      backgroundSize: "9px",
+                    }}
+                  >
+                    {STATUS_OPTIONS.filter(o => o.key !== "all" && o.key !== "needsReview").map(o => (
+                      <option key={o.key} value={o.key} style={{ background: "#0f172a", color: "#f8fafc" }}>
+                        {getStatusOptionLabel(o, itemCat)}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedItem.type && (
+                    <span style={s.typeBadgeMeta}>
+                      {formatTypeLabel(selectedItem.type)}
+                    </span>
+                  )}
+                </div>
+                {(displayedProgress > 0 || selectedItem.totalProgress != null) && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
+                      <span style={{ ...s.meta, margin: 0 }}>
+                        {itemCat === "anime" ? "Ep." : "Ch."}{" "}
+                        <strong>{displayedProgress}</strong>
+                        {selectedItem.totalProgress != null ? ` / ${selectedItem.totalProgress}` : ""}
+                      </span>
+                      <button onClick={() => quickIncrement(1)} style={s.incBtn}>+1</button>
+                      <button onClick={() => quickIncrement(5)} style={s.incBtn}>+5</button>
+                    </div>
+                    {progressPct !== null && (
+                      <div style={s.progressTrack}>
+                        <div style={{ ...s.progressFill, width: `${progressPct}%` }} />
+                      </div>
+                    )}
+                  </div>
+                )}
                 {selectedItem.rating != null ? (
                   <p style={s.meta}>
                     Rating: <strong style={s.ratingDisplay}>{selectedItem.rating} / 10</strong>
@@ -280,36 +368,34 @@ export default function SeriesModal({
               </div>
             </div>
 
-            <div style={s.block}>
-              <p style={s.blockTitle}>Alternate Titles</p>
-              <div style={s.tagWrap}>
-                {selectedItem.altTitles?.length > 0
-                  ? selectedItem.altTitles.map((alt) => (
-                      <span key={alt} style={s.pill}>{alt}</span>
-                    ))
-                  : <span style={s.empty}>No alternate titles yet</span>}
+            {selectedItem.altTitles?.length > 0 && (
+              <div style={s.block}>
+                <p style={s.blockTitle}>Alternate Titles</p>
+                <div style={s.tagWrap}>
+                  {selectedItem.altTitles.map((alt) => (
+                    <span key={alt} style={s.pill}>{alt}</span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div style={s.block}>
-              <p style={s.blockTitle}>Tags</p>
-              <div style={s.tagWrap}>
-                {selectedItem.tags.length > 0
-                  ? selectedItem.tags.map((tag) => (
-                      <span key={tag} style={s.pill}>{tag}</span>
-                    ))
-                  : <span style={s.empty}>No tags yet</span>}
+            {selectedItem.tags.length > 0 && (
+              <div style={s.block}>
+                <p style={s.blockTitle}>Tags</p>
+                <div style={s.tagWrap}>
+                  {selectedItem.tags.map((tag) => (
+                    <span key={tag} style={s.pill}>{tag}</span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div style={s.block}>
-              <p style={s.blockTitle}>Summary</p>
-              <p style={s.summary}>
-                {selectedItem.summary?.trim()
-                  ? selectedItem.summary
-                  : <span style={s.empty}>No summary yet.</span>}
-              </p>
-            </div>
+            {selectedItem.summary?.trim() && (
+              <div style={s.block}>
+                <p style={s.blockTitle}>Summary</p>
+                <p style={s.summary}>{selectedItem.summary}</p>
+              </div>
+            )}
 
             {(() => {
               const note = loadNote(selectedItem.id);
@@ -344,11 +430,6 @@ export default function SeriesModal({
               </div>
             )}
 
-            <div style={s.buttons}>
-              <button onClick={() => setDetailMode("edit")} style={s.primary}>
-                Go to Edit
-              </button>
-            </div>
           </>
 
         ) : (
@@ -576,6 +657,14 @@ export default function SeriesModal({
 // Styles
 // ---------------------------------------------------------------------------
 
+const statusColors = {
+  reading:  { background: "rgba(34,197,94,0.15)",   color: "#86efac" },
+  readNext: { background: "rgba(59,130,246,0.15)",  color: "#93c5fd" },
+  notRead:  { background: "rgba(100,116,139,0.15)", color: "#94a3b8" },
+  finished: { background: "rgba(251,191,36,0.15)",  color: "#fcd34d" },
+  dropped:  { background: "rgba(239,68,68,0.15)",   color: "#fca5a5" },
+};
+
 const ctrl = {
   width: "100%",
   boxSizing: "border-box",
@@ -761,6 +850,58 @@ const s = {
     fontSize: "0.84rem",
     fontWeight: 700,
     textDecoration: "none",
+  },
+  statusBadge: {
+    display: "inline-block",
+    borderRadius: 999,
+    padding: "5px 12px",
+    fontSize: "0.8rem",
+    fontWeight: 800,
+    letterSpacing: "0.01em",
+  },
+  typeBadgeMeta: {
+    display: "inline-block",
+    borderRadius: 999,
+    padding: "5px 12px",
+    fontSize: "0.8rem",
+    fontWeight: 700,
+    background: "rgba(59,130,246,0.12)",
+    color: "#93c5fd",
+  },
+  progressTrack: {
+    height: 5,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    background: "linear-gradient(90deg, #6366f1, #8b5cf6)",
+    borderRadius: 999,
+    transition: "width 0.4s cubic-bezier(0.4,0,0.2,1)",
+  },
+  incBtn: {
+    padding: "4px 10px",
+    borderRadius: 8,
+    border: "1px solid rgba(99,102,241,0.35)",
+    background: "rgba(99,102,241,0.12)",
+    color: "#a5b4fc",
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: "0.78rem",
+  },
+  iconBtn: {
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    color: "#64748b",
+    cursor: "pointer",
+    width: 34,
+    height: 34,
+    fontSize: "0.95rem",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   clearRating: {
     background: "transparent",

@@ -9,8 +9,26 @@ export default function OnboardingModal({ onImport, onDiscover, onSkip }) {
   return (
     <div style={s.overlay}>
       <div style={s.card}>
-        <div style={s.brand}>PanelVault</div>
-        <p style={s.tagline}>Welcome! Let's build your library.</p>
+        <div style={s.brand}>
+          Panel<span style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Vault</span>
+        </div>
+        <p style={s.tagline}>Track manga, manhwa, manhua & anime in one beautiful place.</p>
+
+        <div style={s.miniShelf}>
+          {[
+            { bg: "linear-gradient(160deg, #ef444430, #7f1d1d18)", bar: "#ef4444", pct: 68 },
+            { bg: "linear-gradient(160deg, #ec489930, #50001418)", bar: "#ec4899", pct: 42 },
+            { bg: "linear-gradient(160deg, #8b5cf630, #3b076418)", bar: "#8b5cf6", pct: 85 },
+            { bg: "linear-gradient(160deg, #f59e0b30, #78350f18)", bar: "#f59e0b", pct: 30 },
+            { bg: "linear-gradient(160deg, #22c55e30, #14532d18)", bar: "#22c55e", pct: 55 },
+          ].map((c, i) => (
+            <div key={i} style={{ ...s.miniCard, background: c.bg }}>
+              <div style={s.miniBarTrack}>
+                <div style={{ ...s.miniBarFill, width: c.pct + "%", background: c.bar }} />
+              </div>
+            </div>
+          ))}
+        </div>
 
         <div style={s.paths}>
           <button onClick={onImport} style={s.pathBtn}>
@@ -147,7 +165,37 @@ const s = {
   foot: {
     marginTop: 20,
     textAlign: "center",
-    color: "#334155",
+    color: "#475569",
     fontSize: "0.82rem",
+  },
+  miniShelf: {
+    display: "flex",
+    gap: 7,
+    marginBottom: 24,
+    padding: "14px 12px",
+    background: "rgba(255,255,255,0.03)",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: 18,
+  },
+  miniCard: {
+    flex: 1,
+    aspectRatio: "0.6 / 1",
+    borderRadius: 10,
+    border: "1px solid rgba(255,255,255,0.07)",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "flex-end",
+    padding: "8px 6px 6px",
+  },
+  miniBarTrack: {
+    height: 3,
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+  },
+  miniBarFill: {
+    height: "100%",
+    borderRadius: 999,
+    opacity: 0.75,
   },
 };
