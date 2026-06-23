@@ -7,13 +7,16 @@ import { STATUS_OPTIONS, getStatusOptionLabel } from "../lib/constants";
 // Props:
 //   username — string (from ?p= URL param)
 //   onClose  — () => void
-export default function PublicProfileView({ username, onClose }) {
+export default function PublicProfileView({ username, onClose, currentUser }) {
   const [profile, setProfile]   = useState(null);
   const [series, setSeries]     = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState("");
   const [activeStatus, setActiveStatus] = useState("all");
   const [activeCategory, setActiveCategory] = useState("comics");
+  const [isFollowing, setIsFollowing]   = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followLoading, setFollowLoading] = useState(false);
 
   useEffect(() => {
     if (!username || !supabase) { setError("Profile not found."); setLoading(false); return; }
@@ -43,6 +46,7 @@ export default function PublicProfileView({ username, onClose }) {
     }
 
     setProfile(profileData);
+    loadFollowState(profileData.id);
 
     const { data: seriesData, error: seriesErr } = await supabase
       .from("series")
@@ -58,6 +62,47 @@ export default function PublicProfileView({ username, onClose }) {
 
     setSeries(normalizeSeries((seriesData || []).map(fromRow)));
     setLoading(false);
+  }
+
+  async function loadFollowState(targetId) {
+    if (!supabase || !targetId) return;
+    try {
+      const { count } = await supabase
+        .from("follows")
+        .select("*", { count: "exact", head: true })
+        .eq("following_id", targetId);
+      setFollowerCount(count || 0);
+      if (currentUser) {
+        const { data } = await supabase
+          .from("follows")
+          .select("follower_id")
+          .eq("follower_id", currentUser.id)
+          .eq("following_id", targetId)
+          .maybeSingle();
+        setIsFollowing(!!data);
+      }
+    } catch { /* follows table may not exist yet */ }
+  }
+
+  async function toggleFollow() {
+    if (!supabase || !currentUser || !profile) return;
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        await supabase.from("follows")
+          .delete()
+          .eq("follower_id", currentUser.id)
+          .eq("following_id", profile.id);
+        setIsFollowing(false);
+        setFollowerCount((c) => Math.max(0, c - 1));
+      } else {
+        await supabase.from("follows")
+          .insert({ follower_id: currentUser.id, following_id: profile.id });
+        setIsFollowing(true);
+        setFollowerCount((c) => c + 1);
+      }
+    } catch { /* follows table may not exist yet */ }
+    setFollowLoading(false);
   }
 
   function fromRow(row) {
@@ -114,10 +159,36 @@ export default function PublicProfileView({ username, onClose }) {
           <button onClick={onClose} style={s.backBtn}>← Back</button>
           <div style={s.profileInfo}>
             <div style={s.avatar}>{(profile.username || "?")[0].toUpperCase()}</div>
-            <div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <p style={s.profileName}>@{profile.username}</p>
               {profile.bio && <p style={s.profileBio}>{profile.bio}</p>}
+              {followerCount > 0 && (
+                <p style={s.followerCount}>
+                  {followerCount} {followerCount === 1 ? "follower" : "followers"}
+                </p>
+              )}
             </div>
+            {currentUser && currentUser.id !== profile.id && (
+              <button
+                onClick={toggleFollow}
+                disabled={followLoading}
+                style={{
+                  background: isFollowing
+                    ? "rgba(255,255,255,0.07)"
+                    : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                  color: isFollowing ? "#94a3b8" : "#fff",
+                  border: isFollowing ? "1px solid rgba(255,255,255,0.1)" : "none",
+                  borderRadius: 12, padding: "9px 18px",
+                  fontWeight: 800, fontSize: "0.88rem",
+                  cursor: followLoading ? "default" : "pointer",
+                  opacity: followLoading ? 0.6 : 1,
+                  flexShrink: 0,
+                  boxShadow: isFollowing ? "none" : "0 6px 16px rgba(99,102,241,0.25)",
+                }}
+              >
+                {followLoading ? "…" : isFollowing ? "Following" : "Follow"}
+              </button>
+            )}
           </div>
           <div style={s.catToggle}>
             {["comics", "anime"].map((cat) => (
@@ -259,6 +330,12 @@ const s = {
     fontSize: "0.88rem",
     color: "#64748b",
   },
+  followerCount: {
+    margin: "4px 0 0",
+    fontSize: "0.78rem",
+    color: "#475569",
+    fontWeight: 700,
+  },
   catToggle: {
     display: "flex",
     borderRadius: 12,
@@ -378,7 +455,7 @@ const s = {
   footer: {
     marginTop: 48,
     textAlign: "center",
-    color: "#1e293b",
+    color: "#475569",
     fontSize: "0.8rem",
   },
 };

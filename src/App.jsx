@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, Suspense, lazy } from "react";
+import React, { useEffect, useMemo, useState, useRef, Suspense, lazy } from "react";
 import { supabase } from "./lib/supabase";
 import {
   STORAGE_KEY,
@@ -36,6 +36,7 @@ const StatsModal            = lazy(() => import("./components/StatsModal"));
 const ImportModal           = lazy(() => import("./components/ImportModal"));
 const HistoryModal          = lazy(() => import("./components/HistoryModal"));
 const RecommendationsModal  = lazy(() => import("./components/RecommendationsModal"));
+const UserSearchModal       = lazy(() => import("./components/UserSearchModal"));
 
 // ─── Responsive hook ──────────────────────────────────────────────────────────
 function useWindowWidth() {
@@ -86,6 +87,7 @@ export default function PanelVaultApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showRecommendations, setShowRecommendations] = useState(false);
+  const [showUserSearch, setShowUserSearch] = useState(false);
   const [bulkSelectMode, setBulkSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [favoriteIds, setFavoriteIds] = useState(() => {
@@ -310,17 +312,19 @@ export default function PanelVaultApp() {
     }
   }, [currentUser]);
 
-  // Auto-check updates once per day if the setting is enabled
+  // Kept for manual trigger via menu; auto-trigger is handled by the useEffect below
+
+  // Auto-trigger chapter check on first load (regardless of manual setting)
+  const chapterCheckDone = useRef(false);
   useEffect(() => {
-    if (!currentUser || !series.length) return;
-    const settings = loadSettings();
-    if (!settings.autoCheckUpdates) return;
+    if (series.length === 0 || !currentUser || chapterCheckDone.current) return;
+    chapterCheckDone.current = true;
     const today = new Date().toISOString().split("T")[0];
     const lastCheck = localStorage.getItem("panelvault_last_update_check");
-    if (lastCheck === today) return;
+    if (lastCheck === today) return; // already ran today
     localStorage.setItem("panelvault_last_update_check", today);
     checkForUpdates(true);
-  }, [currentUser, series.length > 0]);
+  }, [series.length > 0, !!currentUser]);
 
   async function loadProfile() {
     if (!supabase || !currentUser) return;
@@ -1138,6 +1142,12 @@ ${anime.map(animeEntry).join("\n")}
               <div style={st.menuDivider} />
 
               <button
+                onClick={() => { setShowUserSearch(true); setMenuOpen(false); }}
+                style={st.menuItem}
+              >
+                <span>🔍 Find Users</span>
+              </button>
+              <button
                 onClick={() => { setShowStats(true); setMenuOpen(false); }}
                 style={st.menuItem}
               >
@@ -1852,12 +1862,20 @@ ${anime.map(animeEntry).join("\n")}
       {publicProfileUser && (
         <PublicProfileView
           username={publicProfileUser}
+          currentUser={currentUser}
           onClose={() => {
             setPublicProfileUser(null);
             const url = new URL(window.location.href);
             url.searchParams.delete("p");
             window.history.replaceState({}, "", url.toString());
           }}
+        />
+      )}
+
+      {showUserSearch && (
+        <UserSearchModal
+          onClose={() => setShowUserSearch(false)}
+          onViewProfile={(username) => { setShowUserSearch(false); setPublicProfileUser(username); }}
         />
       )}
 

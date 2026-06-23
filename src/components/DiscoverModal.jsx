@@ -96,6 +96,7 @@ export default function DiscoverModal({
 
   // Top / Seasonal state
   const [topResults, setTopResults]       = useState([]);
+  const [topFilter, setTopFilter]         = useState("all"); // "all" | "comics" | "anime"
   const [seasonalResults, setSeasonalResults] = useState([]);
   const [isLoadingTop, setIsLoadingTop]   = useState(false);
   const [isLoadingSeasonal, setIsLoadingSeasonal] = useState(false);
@@ -217,9 +218,13 @@ export default function DiscoverModal({
     return result.malId ?? result.mdId ?? result.title;
   }
 
+  const filteredTopResults = topFilter === "all"
+    ? topResults
+    : topResults.filter((r) => r.mediaCategory === topFilter);
+
   const activeResults =
     activeTab === "search"   ? searchResults :
-    activeTab === "top"      ? topResults :
+    activeTab === "top"      ? filteredTopResults :
     seasonalResults;
 
   const isLoading =
@@ -304,11 +309,22 @@ export default function DiscoverModal({
           </>
         )}
 
-        {/* Top / Seasonal headers */}
+        {/* Top Charts filter */}
         {activeTab === "top" && (
-          <p style={s.tabDesc}>
-            Top-ranked manga and anime from MyAnimeList
-          </p>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={s.catRow}>
+              {[["all", "All"], ["comics", "Manga"], ["anime", "Anime"]].map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setTopFilter(key)}
+                  style={{ ...s.catBtn, ...(topFilter === key ? s.catBtnActive : {}), padding: "7px 14px", fontSize: "0.85rem" }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p style={{ ...s.tabDesc, margin: 0 }}>Top-ranked from MyAnimeList</p>
+          </div>
         )}
         {activeTab === "seasonal" && (
           <p style={s.tabDesc}>

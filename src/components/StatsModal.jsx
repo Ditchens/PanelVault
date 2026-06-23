@@ -40,6 +40,38 @@ export default function StatsModal({ series, activityLog = [], onClose }) {
 
   const maxWeekDay = Math.max(...weekActivity.map((d) => d.count), 1);
 
+  // Weekly reading pace (last 30 days)
+  const readingPace = useMemo(() => {
+    if (!activityLog.length) return 0;
+    const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
+    const progress = activityLog.filter((e) => e.date >= cutoff).reduce((s, e) => s + (e.delta || 1), 0);
+    return Math.round((progress / 4.28) * 10) / 10;
+  }, [activityLog]);
+
+  // Rating histogram buckets
+  const ratingHistogram = useMemo(() => {
+    const buckets = [
+      { label: "9–10", min: 9,   max: 10.5, count: 0, color: "#4ade80" },
+      { label: "7–8",  min: 7,   max: 9,    count: 0, color: "#a3e635" },
+      { label: "5–6",  min: 5,   max: 7,    count: 0, color: "#fbbf24" },
+      { label: "3–4",  min: 3,   max: 5,    count: 0, color: "#fb923c" },
+      { label: "1–2",  min: 0.5, max: 3,    count: 0, color: "#f87171" },
+    ];
+    series.forEach((item) => {
+      if (item.rating == null) return;
+      for (const b of buckets) {
+        if (item.rating >= b.min && item.rating < b.max) { b.count++; break; }
+      }
+    });
+    return buckets;
+  }, [series]);
+
+  // Top rated series
+  const topRated = useMemo(() =>
+    [...series].filter((i) => i.rating != null).sort((a, b) => b.rating - a.rating).slice(0, 5),
+    [series]
+  );
+
   const stats = useMemo(() => {
     const comics = series.filter((i) => (i.mediaCategory || "comics") === "comics");
     const anime  = series.filter((i) => i.mediaCategory === "anime");
@@ -77,6 +109,10 @@ export default function StatsModal({ series, activityLog = [], onClose }) {
     const nowReading = comics.filter((i) => i.status === "reading").slice(0, 4);
     const nowWatching = anime.filter((i) => i.status === "reading").slice(0, 4);
 
+    const finishedCount = series.filter((i) => i.status === "finished").length;
+    const completionRate = series.length > 0 ? Math.round((finishedCount / series.length) * 100) : 0;
+    const timeHours = Math.round((totalChapters * 10 + totalEpisodes * 24) / 60);
+
     return {
       total: series.length,
       comicsCount: comics.length,
@@ -94,6 +130,9 @@ export default function StatsModal({ series, activityLog = [], onClose }) {
       nowReading,
       nowWatching,
       needsReview: series.filter((i) => i.needsReview).length,
+      finishedCount,
+      completionRate,
+      timeHours,
     };
   }, [series]);
 
@@ -133,6 +172,9 @@ export default function StatsModal({ series, activityLog = [], onClose }) {
     );
   }
 
+  const maxHistogramCount = Math.max(...ratingHistogram.map((b) => b.count), 1);
+  const anyRated = stats.ratedCount > 0;
+
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={s.modal} className="pv-modal-content" onClick={(e) => e.stopPropagation()}>
@@ -160,6 +202,27 @@ export default function StatsModal({ series, activityLog = [], onClose }) {
           />
           <StatCard label="Needs Review"     value={stats.needsReview} />
         </div>
+
+        {/* Time & Pace stat cards */}
+        {stats.total > 0 && (
+          <div style={s.statGrid}>
+            <StatCard
+              label="Est. Hours"
+              value={`${stats.timeHours}h`}
+              sub={stats.timeHours > 24 ? `~${Math.round(stats.timeHours / 24)}d` : "time invested"}
+            />
+            <StatCard
+              label="Weekly Pace"
+              value={`${readingPace}/wk`}
+              sub="last 30 days"
+            />
+            <StatCard
+              label="Completion"
+              value={`${stats.completionRate}%`}
+              sub={`${stats.finishedCount} finished`}
+            />
+          </div>
+        )}
 
         {/* 7-day activity chart */}
         {activityLog.length > 0 && (
@@ -262,6 +325,42 @@ export default function StatsModal({ series, activityLog = [], onClose }) {
                 </div>
               ))}
             </div>
+          </Section>
+        )}
+
+        {/* Rating Histogram */}
+        {anyRated && (
+          <Section title="Rating Distribution">
+            {ratingHistogram.filter((b) => b.count > 0).map((b) => (
+              <div key={b.label} style={s.barRow}>
+                <span style={s.barLabel}>{b.label}</span>
+                <Bar value={b.count} max={maxHistogramCount} color={b.color} />
+                <span style={s.barCount}>{b.count}</span>
+              </div>
+            ))}
+          </Section>
+        )}
+
+        {/* Top Rated */}
+        {anyRated && (
+          <Section title="Top Rated">
+            {topRated.map((item, idx) => (
+              <div key={item.id} style={s.topRatedRow}>
+                <span style={s.topRatedRank}>#{idx + 1}</span>
+                {item.image ? (
+                  <img
+                    src={item.image}
+                    alt={item.title}
+                    style={s.topRatedImg}
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                  />
+                ) : (
+                  <div style={s.topRatedNoImg}>{item.title[0]}</div>
+                )}
+                <span style={s.topRatedTitle}>{item.title}</span>
+                <span style={s.topRatedRating}>★ {item.rating}</span>
+              </div>
+            ))}
           </Section>
         )}
 
@@ -543,5 +642,63 @@ const s = {
     fontSize: "0.65rem",
     fontWeight: 800,
     color: "#818cf8",
+  },
+  topRatedRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: 12,
+    padding: "10px 12px",
+    marginBottom: 6,
+  },
+  topRatedRank: {
+    width: 24,
+    textAlign: "center",
+    fontSize: "0.85rem",
+    fontWeight: 900,
+    color: "#64748b",
+    flexShrink: 0,
+  },
+  topRatedImg: {
+    width: 40,
+    height: 56,
+    objectFit: "cover",
+    borderRadius: 6,
+    flexShrink: 0,
+    border: "1px solid rgba(255,255,255,0.08)",
+  },
+  topRatedNoImg: {
+    width: 40,
+    height: 56,
+    borderRadius: 6,
+    flexShrink: 0,
+    background: "rgba(99,102,241,0.2)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "1rem",
+    fontWeight: 900,
+    color: "#818cf8",
+  },
+  topRatedTitle: {
+    flex: 1,
+    fontSize: "0.88rem",
+    fontWeight: 700,
+    color: "#dbe4f0",
+    overflow: "hidden",
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+  },
+  topRatedRating: {
+    flexShrink: 0,
+    background: "rgba(245,158,11,0.2)",
+    color: "#fbbf24",
+    borderRadius: 8,
+    padding: "4px 8px",
+    fontSize: "0.82rem",
+    fontWeight: 800,
   },
 };
