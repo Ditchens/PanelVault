@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#070b14"/>
+      <stop offset="100%" style="stop-color:#0f172a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="30%" cy="40%" r="50%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:0.18"/>
+      <stop offset="100%" style="stop-color:#0f172a;stop-opacity:0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Decorative cards (shelf preview) -->
+  <rect x="780" y="100" width="130" height="200" rx="16" fill="#ef4444" opacity="0.15"/>
+  <rect x="780" y="100" width="130" height="200" rx="16" fill="none" stroke="#ef4444" stroke-opacity="0.2" stroke-width="1"/>
+  <rect x="920" y="80" width="130" height="220" rx="16" fill="#8b5cf6" opacity="0.2"/>
+  <rect x="920" y="80" width="130" height="220" rx="16" fill="none" stroke="#8b5cf6" stroke-opacity="0.3" stroke-width="1"/>
+  <rect x="1060" y="110" width="130" height="190" rx="16" fill="#0ea5e9" opacity="0.12"/>
+  <rect x="1060" y="110" width="130" height="190" rx="16" fill="none" stroke="#0ea5e9" stroke-opacity="0.2" stroke-width="1"/>
+  <!-- Progress bars on cards -->
+  <rect x="794" y="270" width="102" height="3" rx="2" fill="rgba(255,255,255,0.08)"/>
+  <rect x="794" y="270" width="68" height="3" rx="2" fill="#ef4444" opacity="0.7"/>
+  <rect x="934" y="278" width="102" height="3" rx="2" fill="rgba(255,255,255,0.08)"/>
+  <rect x="934" y="278" width="86" height="3" rx="2" fill="#8b5cf6" opacity="0.8"/>
+  <rect x="1074" y="270" width="102" height="3" rx="2" fill="rgba(255,255,255,0.08)"/>
+  <rect x="1074" y="270" width="45" height="3" rx="2" fill="#0ea5e9" opacity="0.6"/>
+
+  <!-- More cards below -->
+  <rect x="780" y="320" width="130" height="190" rx="16" fill="#f59e0b" opacity="0.12"/>
+  <rect x="780" y="320" width="130" height="190" rx="16" fill="none" stroke="#f59e0b" stroke-opacity="0.2" stroke-width="1"/>
+  <rect x="920" y="320" width="130" height="190" rx="16" fill="#22c55e" opacity="0.1"/>
+  <rect x="920" y="320" width="130" height="190" rx="16" fill="none" stroke="#22c55e" stroke-opacity="0.15" stroke-width="1"/>
+  <rect x="794" y="480" width="102" height="3" rx="2" fill="rgba(255,255,255,0.08)"/>
+  <rect x="794" y="480" width="55" height="3" rx="2" fill="#f59e0b" opacity="0.7"/>
+  <rect x="934" y="480" width="102" height="3" rx="2" fill="rgba(255,255,255,0.08)"/>
+  <rect x="934" y="480" width="80" height="3" rx="2" fill="#22c55e" opacity="0.7"/>
+
+  <!-- Brand -->
+  <text x="100" y="260" font-family="system-ui, -apple-system, sans-serif" font-size="96" font-weight="900" letter-spacing="-4" fill="#f8fafc">Panel</text>
+  <text x="442" y="260" font-family="system-ui, -apple-system, sans-serif" font-size="96" font-weight="900" letter-spacing="-4" fill="url(#accent)">Vault</text>
+
+  <!-- Tagline -->
+  <text x="100" y="320" font-family="system-ui, -apple-system, sans-serif" font-size="32" font-weight="500" fill="#64748b">Track manga, manhwa, manhua &amp; anime</text>
+  <text x="100" y="360" font-family="system-ui, -apple-system, sans-serif" font-size="32" font-weight="500" fill="#64748b">in one beautiful place.</text>
+
+  <!-- Badges -->
+  <rect x="100" y="420" width="130" height="44" rx="22" fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.3)" stroke-width="1"/>
+  <text x="165" y="447" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="700" fill="#a5b4fc" text-anchor="middle">Free</text>
+
+  <rect x="244" y="420" width="130" height="44" rx="22" fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.3)" stroke-width="1"/>
+  <text x="309" y="447" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="700" fill="#a5b4fc" text-anchor="middle">No ads</text>
+
+  <rect x="388" y="420" width="160" height="44" rx="22" fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.3)" stroke-width="1"/>
+  <text x="468" y="447" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="700" fill="#a5b4fc" text-anchor="middle">Cloud sync</text>
+
+  <!-- URL -->
+  <text x="100" y="560" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="600" fill="#334155">panel-vault.vercel.app</text>
+</svg>

@@ -1,6 +1,18 @@
 import React, { useState, useEffect, useRef } from "react";
 import { normalizeTitle } from "../lib/seriesUtils";
 
+// ── Fetch with retry on 429 ───────────────────────────────────────────────────
+async function fetchWithRetry(url, retries = 2, delay = 1200) {
+  for (let i = 0; i <= retries; i++) {
+    const res = await fetch(url);
+    if (res.status === 429 && i < retries) {
+      await new Promise((r) => setTimeout(r, delay * (i + 1)));
+      continue;
+    }
+    return res;
+  }
+}
+
 // ── Mappers ───────────────────────────────────────────────────────────────────
 
 function mapMangaDexResult(manga) {
@@ -210,8 +222,8 @@ export default function DiscoverModal({ onClose, onAdd, existingTitles }) {
     setIsLoadingTrend(true);
     try {
       const [mangaRes, animeRes] = await Promise.all([
-        fetch("https://api.jikan.moe/v4/top/manga?limit=20&sfw=true"),
-        fetch("https://api.jikan.moe/v4/top/anime?limit=20&sfw=true"),
+        fetchWithRetry("https://api.jikan.moe/v4/top/manga?limit=20&sfw=true"),
+        fetchWithRetry("https://api.jikan.moe/v4/top/anime?limit=20&sfw=true"),
       ]);
       const [mangaJson, animeJson] = await Promise.all([mangaRes.json(), animeRes.json()]);
       const manga = (mangaJson?.data || []).map((r) => ({ ...mapJikanManga(r), rank: r.rank }));
@@ -225,7 +237,7 @@ export default function DiscoverModal({ onClose, onAdd, existingTitles }) {
   async function loadSeasonal() {
     setIsLoadingSeasonal(true);
     try {
-      const res = await fetch("https://api.jikan.moe/v4/seasons/now?limit=24&sfw=true");
+      const res = await fetchWithRetry("https://api.jikan.moe/v4/seasons/now?limit=24&sfw=true");
       const json = await res.json();
       setSeasonalResults((json?.data || []).map(mapJikanAnime));
       setSeasonalLoaded(true);
@@ -240,8 +252,7 @@ export default function DiscoverModal({ onClose, onAdd, existingTitles }) {
     setSearchResults([]);
     try {
       if (searchCat === "comics") {
-        // Try MangaDex first for comics
-        const res = await fetch(
+        const res = await fetchWithRetry(
           `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=20` +
           `&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica`
         );
@@ -250,14 +261,13 @@ export default function DiscoverModal({ onClose, onAdd, existingTitles }) {
           const results = (json?.data || []).map(mapMangaDexResult);
           if (results.length) { setSearchResults(results); return; }
         }
-        // Fallback to Jikan
-        const fallback = await fetch(
+        const fallback = await fetchWithRetry(
           `https://api.jikan.moe/v4/manga?q=${encodeURIComponent(query)}&limit=20&sfw=true`
         );
         const fallbackJson = await fallback.json();
         setSearchResults((fallbackJson?.data || []).map(mapJikanManga));
       } else {
-        const res = await fetch(
+        const res = await fetchWithRetry(
           `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=20&sfw=true`
         );
         const json = await res.json();

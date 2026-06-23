@@ -96,6 +96,9 @@ export default function PanelVaultApp() {
   const [activeMainView, setActiveMainView] = useState("home"); // "home" | "library"
   const [activeBottomTab, setActiveBottomTab] = useState("home"); // mobile nav
   const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   // ── Toasts ────────────────────────────────────────────────────────────────
   const [toasts, setToasts] = useState([]);
@@ -156,6 +159,43 @@ export default function PanelVaultApp() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // ── Online / offline detection ────────────────────────────────────────────
+  useEffect(() => {
+    const goOnline  = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener("online",  goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online",  goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
+  // ── PWA install prompt ────────────────────────────────────────────────────
+  useEffect(() => {
+    const dismissed = localStorage.getItem("pv_install_dismissed");
+    if (dismissed) return;
+    function handler(e) {
+      e.preventDefault();
+      setInstallPrompt(e);
+      setShowInstallBanner(true);
+    }
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  async function triggerInstall() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    setInstallPrompt(null);
+    setShowInstallBanner(false);
+  }
+
+  function dismissInstall() {
+    localStorage.setItem("pv_install_dismissed", "1");
+    setShowInstallBanner(false);
+  }
 
   // ── Startup ───────────────────────────────────────────────────────────────
 
@@ -1045,8 +1085,11 @@ ${anime.map(animeEntry).join("\n")}
 
   if (supabase && !authChecked) {
     return (
-      <div style={{ ...st.page, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <p style={{ color: "#64748b", fontSize: "1.1rem" }}>Loading…</p>
+      <div style={{ ...st.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+        <div style={{ fontSize: "2rem", fontWeight: 900, letterSpacing: "-0.04em", color: "#f8fafc" }}>
+          Panel<span style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Vault</span>
+        </div>
+        <div style={{ width: 32, height: 3, borderRadius: 999, background: "linear-gradient(90deg,#6366f1,#8b5cf6)", animation: "pulse 1.2s ease-in-out infinite" }} />
       </div>
     );
   }
@@ -1073,6 +1116,25 @@ ${anime.map(animeEntry).join("\n")}
     <div style={{ ...st.page, paddingBottom: isMobile ? 72 : 0 }}>
       <div style={st.bgGlowOne} />
       <div style={st.bgGlowTwo} />
+
+      {/* ── OFFLINE BANNER ───────────────────────────────────────────── */}
+      {!isOnline && (
+        <div style={st.offlineBanner}>
+          ⚠️ You're offline — changes will sync when your connection returns.
+        </div>
+      )}
+
+      {/* ── PWA INSTALL BANNER ───────────────────────────────────────── */}
+      {showInstallBanner && (
+        <div style={st.installBanner}>
+          <span style={{ fontWeight: 700 }}>📲 Install PanelVault</span>
+          <span style={{ color: "#94a3b8", fontSize: "0.85rem" }}>Add to your home screen for the best experience</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={triggerInstall} style={st.installBtn}>Install</button>
+            <button onClick={dismissInstall} style={st.installDismiss}>✕</button>
+          </div>
+        </div>
+      )}
 
       {/* ── TOPBAR ────────────────────────────────────────────────────── */}
       <header style={{ ...st.topbar, ...(isMobile ? st.topbarMobile : {}) }}>
@@ -1877,6 +1939,40 @@ const st = {
     filter: "blur(90px)",
     top: 120, right: -70,
     pointerEvents: "none",
+  },
+  offlineBanner: {
+    position: "sticky", top: 0, zIndex: 2000,
+    background: "rgba(245,158,11,0.15)",
+    border: "1px solid rgba(245,158,11,0.3)",
+    borderRadius: 0,
+    padding: "10px 20px",
+    color: "#fcd34d",
+    fontSize: "0.88rem",
+    fontWeight: 700,
+    textAlign: "center",
+    backdropFilter: "blur(8px)",
+  },
+  installBanner: {
+    position: "sticky", top: 0, zIndex: 1999,
+    background: "rgba(15,23,42,0.97)",
+    borderBottom: "1px solid rgba(99,102,241,0.2)",
+    padding: "12px 20px",
+    display: "flex", alignItems: "center", gap: 12,
+    flexWrap: "wrap",
+    backdropFilter: "blur(8px)",
+  },
+  installBtn: {
+    background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+    color: "#fff", border: "none", borderRadius: 10,
+    padding: "7px 16px", fontWeight: 800,
+    fontSize: "0.88rem", cursor: "pointer",
+  },
+  installDismiss: {
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    color: "#64748b", borderRadius: 10,
+    padding: "7px 10px", cursor: "pointer",
+    fontSize: "0.85rem",
   },
 
   // ── Topbar ───────────────────────────────────────────────────────────────

@@ -222,6 +222,7 @@ export default function SeriesModal({
     setEditTags([]);
   }
 
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
   const itemCat  = selectedItem?.mediaCategory || "comics";
   const typeOpts = editMediaCategory === "anime" ? ANIME_TYPE_OPTIONS : COMICS_TYPE_OPTIONS;
   const tagOpts  = editMediaCategory === "anime" ? ANIME_TAG_OPTIONS  : COMICS_TAG_OPTIONS;
@@ -256,8 +257,17 @@ export default function SeriesModal({
     : null;
 
   return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} className="pv-modal-content" onClick={(e) => e.stopPropagation()}>
+    <div style={{ ...s.overlay, padding: isMobile ? "0" : "20px" }} onClick={onClose}>
+      <div
+        style={{
+          ...s.modal,
+          borderRadius: isMobile ? "24px 24px 0 0" : 26,
+          maxHeight: isMobile ? "92vh" : "90vh",
+          ...(isMobile ? { position: "fixed", bottom: 0, left: 0, right: 0, width: "100%" } : {}),
+        }}
+        className="pv-modal-content"
+        onClick={(e) => e.stopPropagation()}
+      >
 
         {/* ── INFO VIEW ────────────────────────────────────────────── */}
         {detailMode === "info" ? (
@@ -274,13 +284,18 @@ export default function SeriesModal({
               <button onClick={onClose} style={s.iconBtn} title="Close">✕</button>
             </div>
 
-            <div style={s.top}>
-              <div style={s.previewWrap}>
+            <div style={{ ...s.top, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={{
+                ...s.previewWrap,
+                width: isMobile ? "100%" : 150,
+                aspectRatio: isMobile ? "16 / 9" : "2 / 3",
+                borderRadius: isMobile ? 14 : 16,
+              }}>
                 {selectedItem.image ? (
                   <img
                     src={selectedItem.image}
                     alt={selectedItem.title}
-                    style={s.previewImg}
+                    style={{ ...s.previewImg, objectPosition: isMobile ? "center top" : "center" }}
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
                       if (e.currentTarget.nextSibling)
@@ -435,13 +450,13 @@ export default function SeriesModal({
         ) : (
           /* ── EDIT VIEW ───────────────────────────────────────────── */
           <>
-            <div style={s.top}>
-              <div style={s.previewWrap}>
+            <div style={{ ...s.top, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={{ ...s.previewWrap, width: isMobile ? "100%" : 150, aspectRatio: isMobile ? "16 / 9" : "2 / 3", borderRadius: isMobile ? 14 : 16 }}>
                 {editImage ? (
                   <img
                     src={editImage}
                     alt={editTitle}
-                    style={s.previewImg}
+                    style={{ ...s.previewImg, objectPosition: isMobile ? "center top" : "center" }}
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
                       if (e.currentTarget.nextSibling)
