@@ -28,6 +28,7 @@ import SettingsModal, { loadSettings, ACTIVITY_KEY } from "./components/Settings
 import ToastStack from "./components/ToastStack";
 import Dashboard from "./components/Dashboard";
 import LandingPage from "./components/LandingPage";
+import AuthModal from "./components/AuthModal";
 
 const DiscoverModal         = lazy(() => import("./components/DiscoverModal"));
 const StatsModal            = lazy(() => import("./components/StatsModal"));
@@ -94,6 +95,7 @@ export default function PanelVaultApp() {
   });
   const [activeMainView, setActiveMainView] = useState("home"); // "home" | "library"
   const [activeBottomTab, setActiveBottomTab] = useState("home"); // mobile nav
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
 
   // ── Toasts ────────────────────────────────────────────────────────────────
   const [toasts, setToasts] = useState([]);
@@ -148,8 +150,9 @@ export default function PanelVaultApp() {
       setCurrentUser(session?.user || null);
       setAuthChecked(true);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setCurrentUser(session?.user || null);
+      if (event === "PASSWORD_RECOVERY") setShowPasswordReset(true);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -908,9 +911,12 @@ export default function PanelVaultApp() {
   }
 
   function handleProfileSave(updatedProfile) {
+    const wasFirstSetup = profileSetupNeeded;
     setProfile(updatedProfile);
     setProfileSetupNeeded(false);
     setShowProfile(false);
+    // After first-time profile creation, show onboarding if library is still empty
+    if (wasFirstSetup && series.length === 0) setShowOnboarding(true);
   }
 
   async function handleClearAll() {
@@ -1047,6 +1053,18 @@ ${anime.map(animeEntry).join("\n")}
 
   if (supabase && authChecked && !currentUser) {
     return <LandingPage />;
+  }
+
+  if (showPasswordReset) {
+    return (
+      <AuthModal
+        initialMode="reset_password"
+        onPasswordUpdated={() => {
+          setShowPasswordReset(false);
+          addToast("Password updated successfully!", "success");
+        }}
+      />
+    );
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1431,7 +1449,13 @@ ${anime.map(animeEntry).join("\n")}
             </div>
           </div>
 
-          {filteredAndSorted.length === 0 ? (
+          {filteredAndSorted.length === 0 && !hasLoadedCloud ? (
+            <div style={st.skeletonGrid}>
+              {[...Array(12)].map((_, i) => (
+                <div key={i} style={st.skeletonCard} />
+              ))}
+            </div>
+          ) : filteredAndSorted.length === 0 ? (
             <div style={st.emptyState}>
               <div style={{ fontSize: "2.6rem", lineHeight: 1 }}>
                 {activeStatus === "reading" ? "📖" :
@@ -1737,15 +1761,8 @@ ${anime.map(animeEntry).join("\n")}
         />
       )}
 
-      {showOnboarding && (
-        <OnboardingModal
-          onImport={() => { setShowOnboarding(false); setShowImport(true); }}
-          onDiscover={() => { setShowOnboarding(false); setShowDiscover(true); }}
-          onSkip={() => setShowOnboarding(false)}
-        />
-      )}
-
-      {(showProfile || profileSetupNeeded) && currentUser && !showOnboarding && (
+      {/* Profile setup takes priority — onboarding shows only after username is set */}
+      {(showProfile || profileSetupNeeded) && currentUser && (
         <ProfileModal
           profile={profile}
           currentUser={currentUser}
@@ -1753,6 +1770,14 @@ ${anime.map(animeEntry).join("\n")}
           onClose={() => setShowProfile(false)}
           onSignOut={handleSignOut}
           isSetup={profileSetupNeeded && !showProfile}
+        />
+      )}
+
+      {showOnboarding && !profileSetupNeeded && (
+        <OnboardingModal
+          onImport={() => { setShowOnboarding(false); setShowImport(true); }}
+          onDiscover={() => { setShowOnboarding(false); setShowDiscover(true); }}
+          onSkip={() => setShowOnboarding(false)}
         />
       )}
 
@@ -2324,6 +2349,17 @@ const st = {
     fontSize: "0.88rem",
   },
   input: { ...ctrl },
+  skeletonGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+    gap: 18,
+  },
+  skeletonCard: {
+    aspectRatio: "2 / 3",
+    borderRadius: 18,
+    background: "linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.07))",
+    animation: "pulse 1.4s ease-in-out infinite",
+  },
   emptyState: {
     background: "rgba(15,23,42,0.5)",
     border: "1px solid rgba(255,255,255,0.08)",

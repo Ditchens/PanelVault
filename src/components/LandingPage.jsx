@@ -14,7 +14,7 @@ export default function LandingPage() {
   const [authMode, setAuthMode] = useState(null); // null | "login" | "signup"
 
   if (authMode) {
-    return <AuthModal initialMode={authMode} />;
+    return <AuthModal initialMode={authMode} onBack={() => setAuthMode(null)} />;
   }
 
   return (

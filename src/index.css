@@ -124,6 +124,12 @@ button {
   font-family: inherit;
 }
 
+/* ── Skeleton pulse ──────────────────────────────────── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 /* ── Landing feature card hover ──────────────────────── */
 .pv-feature-card {
   transition: transform 0.22s ease, border-color 0.22s ease,
