@@ -355,7 +355,7 @@ export default function PanelVaultApp() {
 
   // Kept for manual trigger via menu; auto-trigger is handled by the useEffect below
 
-  // Auto-trigger chapter check + cover fetch on first load
+  // Auto-trigger chapter check on first load
   const chapterCheckDone = useRef(false);
   useEffect(() => {
     if (series.length === 0 || !currentUser || chapterCheckDone.current) return;
@@ -366,10 +366,15 @@ export default function PanelVaultApp() {
       localStorage.setItem("panelvault_last_update_check", today);
       checkForUpdates(true);
     }
-    // Silently fill in any missing covers
-    const missingCovers = series.some((s) => !s.image);
-    if (missingCovers) autoFetchMissingCovers();
   }, [series.length > 0, !!currentUser]);
+
+  // Reactively fetch covers whenever series without images exist
+  const missingCoverCount = series.filter((s) => !s.image).length;
+  useEffect(() => {
+    if (!missingCoverCount || !currentUser || isFetchingCovers) return;
+    autoFetchMissingCovers();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingCoverCount, !!currentUser]);
 
   async function loadProfile() {
     if (!supabase || !currentUser) return;
@@ -561,26 +566,19 @@ export default function PanelVaultApp() {
       } catch { return ""; }
     }
 
-    // Comics → MangaDex (512px cover, fall back to Jikan)
+    // Comics → MangaDex single call with cover_art included
     try {
       const searchRes = await fetch(
-        `https://api.mangadex.org/manga?title=${encodeURIComponent(seriesTitle)}&limit=3` +
-        `&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica`
+        `https://api.mangadex.org/manga?title=${encodeURIComponent(seriesTitle)}&limit=5` +
+        `&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica`
       );
       if (searchRes.ok) {
         const searchData = await searchRes.json();
-        const manga = searchData?.data?.[0];
-        const mangaId = manga?.id;
-        if (mangaId) {
-          const coverRes = await fetch(
-            `https://api.mangadex.org/cover?manga[]=${mangaId}&limit=1&order[volume]=desc`
-          );
-          if (coverRes.ok) {
-            const coverData = await coverRes.json();
-            const filename = coverData?.data?.[0]?.attributes?.fileName;
-            if (filename) {
-              return `https://uploads.mangadex.org/covers/${mangaId}/${filename}.512.jpg`;
-            }
+        for (const manga of (searchData?.data || [])) {
+          const coverRel = (manga.relationships || []).find((r) => r.type === "cover_art");
+          const filename = coverRel?.attributes?.fileName;
+          if (filename) {
+            return `https://uploads.mangadex.org/covers/${manga.id}/${filename}.512.jpg`;
           }
         }
       }
