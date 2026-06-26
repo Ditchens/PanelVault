@@ -556,25 +556,31 @@ export default function PanelVaultApp() {
   async function fetchCover(seriesTitle, mediaCategory = "comics") {
     const isAnime = mediaCategory === "anime";
 
-    // 1. AniList — primary source, no rate limits, great coverage
-    try {
-      const res = await fetch("https://graphql.anilist.co", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          query: `query($s:String,$t:MediaType){Media(search:$s,type:$t){coverImage{large}}}`,
-          variables: { s: seriesTitle, t: isAnime ? "ANIME" : "MANGA" },
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const url = data?.data?.Media?.coverImage?.large;
-        if (url) return url;
-      }
-    } catch {}
+    // Try full title, then a simplified version (strip subtitle after colon/dash)
+    const simplified = seriesTitle.replace(/\s*[：:][^:]*$/, "").replace(/\s*\(.*?\)\s*$/, "").trim();
+    const titles = [seriesTitle, ...(simplified && simplified !== seriesTitle ? [simplified] : [])];
+
+    // 1. AniList — primary, great coverage, no rate limits
+    for (const t of titles) {
+      try {
+        const res = await fetch("https://graphql.anilist.co", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            query: `query($s:String,$t:MediaType){Media(search:$s,type:$t){coverImage{large}}}`,
+            variables: { s: t, t: isAnime ? "ANIME" : "MANGA" },
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const url = data?.data?.Media?.coverImage?.large;
+          if (url) return url;
+        }
+      } catch {}
+    }
 
     if (isAnime) {
-      // 2. Jikan anime fallback
+      // Jikan anime fallback
       try {
         const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(seriesTitle)}&limit=1`);
         const data = await res.json();
@@ -585,22 +591,40 @@ export default function PanelVaultApp() {
     }
 
     // 2. MangaDex — single call with cover_art included
-    try {
-      const searchRes = await fetch(
-        `https://api.mangadex.org/manga?title=${encodeURIComponent(seriesTitle)}&limit=5` +
-        `&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica`
-      );
-      if (searchRes.ok) {
-        const searchData = await searchRes.json();
-        for (const manga of (searchData?.data || [])) {
-          const coverRel = (manga.relationships || []).find((r) => r.type === "cover_art");
-          const filename = coverRel?.attributes?.fileName;
-          if (filename) return `https://uploads.mangadex.org/covers/${manga.id}/${filename}.512.jpg`;
+    for (const t of titles) {
+      try {
+        const searchRes = await fetch(
+          `https://api.mangadex.org/manga?title=${encodeURIComponent(t)}&limit=5` +
+          `&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica`
+        );
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          for (const manga of (searchData?.data || [])) {
+            const coverRel = (manga.relationships || []).find((r) => r.type === "cover_art");
+            const filename = coverRel?.attributes?.fileName;
+            if (filename) return `https://uploads.mangadex.org/covers/${manga.id}/${filename}.512.jpg`;
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
 
-    // 3. Jikan manga final fallback
+    // 3. Kitsu — good manhwa/webtoon coverage
+    for (const t of titles) {
+      try {
+        const res = await fetch(
+          `https://kitsu.io/api/edge/manga?filter[text]=${encodeURIComponent(t)}&page[limit]=1`,
+          { headers: { Accept: "application/vnd.api+json" } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const url = data?.data?.[0]?.attributes?.posterImage?.large
+            || data?.data?.[0]?.attributes?.posterImage?.medium;
+          if (url) return url;
+        }
+      } catch {}
+    }
+
+    // 4. Jikan manga — final fallback
     try {
       const res = await fetch(`https://api.jikan.moe/v4/manga?q=${encodeURIComponent(seriesTitle)}&limit=1`);
       const data = await res.json();
