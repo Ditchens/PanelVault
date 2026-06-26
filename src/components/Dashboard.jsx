@@ -267,7 +267,7 @@ function CoverCard({ item, onClick, showProgress }) {
     <button onClick={onClick} style={s.card} className="pv-shelf-card">
       <div style={s.coverWrap}>
         {item.image ? (
-          <img src={item.image} alt={item.title} style={s.cover}
+          <img src={item.image} alt={item.title} style={s.cover} loading="lazy"
             onError={(e) => { e.currentTarget.style.display = "none"; }} />
         ) : (
           <div style={s.noCover}>{(item.title || "?")[0].toUpperCase()}</div>

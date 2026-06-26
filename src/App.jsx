@@ -21,10 +21,11 @@ import {
   formatTypeLabel,
 } from "./lib/seriesUtils";
 import SeriesModal from "./components/SeriesModal";
+import ConfirmModal from "./components/ConfirmModal";
 import OnboardingModal from "./components/OnboardingModal";
 import ProfileModal from "./components/ProfileModal";
 import PublicProfileView from "./components/PublicProfileView";
-import SettingsModal, { loadSettings, ACTIVITY_KEY } from "./components/SettingsModal";
+import SettingsModal, { loadSettings, ACTIVITY_KEY, SETTINGS_KEY } from "./components/SettingsModal";
 import ToastStack from "./components/ToastStack";
 import Dashboard from "./components/Dashboard";
 import LandingPage from "./components/LandingPage";
@@ -99,6 +100,7 @@ export default function PanelVaultApp() {
   const [isOnline, setIsOnline] = useState(() => typeof navigator !== "undefined" ? navigator.onLine : true);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   // ── Toasts ────────────────────────────────────────────────────────────────
   const [toasts, setToasts] = useState([]);
@@ -113,6 +115,11 @@ export default function PanelVaultApp() {
   function dismissToast(id) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }
+
+  function showConfirm(message, onConfirm, opts = {}) {
+    setConfirmDialog({ message, onConfirm, ...opts });
+  }
+  function dismissConfirm() { setConfirmDialog(null); }
 
   // ── Profile / social ──────────────────────────────────────────────────────
   const [profile, setProfile]             = useState(null);
@@ -734,37 +741,40 @@ export default function PanelVaultApp() {
     });
   }
 
-  async function clearAllCovers() {
-    if (!window.confirm("Remove all cover images? Series data is kept.")) return;
-    const result = await persistSeries(
-      series.map((item) => ({ ...item, image: "" })),
-      { successMessage: "" }
-    );
-    if (result.ok) addToast("All cover images cleared.", "success");
+  function clearAllCovers() {
+    showConfirm("Remove all cover images? Series data is kept.", async () => {
+      const result = await persistSeries(
+        series.map((item) => ({ ...item, image: "" })),
+        { successMessage: "" }
+      );
+      if (result.ok) addToast("All cover images cleared.", "success");
+      dismissConfirm();
+    }, { confirmLabel: "Remove All Covers", danger: true });
   }
 
-  async function importLocalLibraryToCloud() {
+  function importLocalLibraryToCloud() {
     if (!supabase)           { addToast("Supabase is not configured.", "error"); return; }
     if (!hasLoadedCloud)     { addToast("Please wait for the cloud check to finish.", "info"); return; }
     if (cloudHasData)        { addToast("Cloud already has data.", "info"); return; }
     if (series.length === 0) { addToast("No local data to import.", "info"); return; }
 
-    if (!window.confirm(`Import ${series.length} local series to Supabase?`)) return;
+    showConfirm(`Import ${series.length} series to the cloud?`, async () => {
+      setIsImportingToCloud(true);
+      setCloudStatus("syncing");
+      setCloudMessage("Importing local library to cloud…");
 
-    setIsImportingToCloud(true);
-    setCloudStatus("syncing");
-    setCloudMessage("Importing local library to cloud…");
+      const result = await persistSeries(series, {
+        successMessage: "Library imported to cloud.",
+      });
+      setIsImportingToCloud(false);
 
-    const result = await persistSeries(series, {
-      successMessage: "Library imported to cloud.",
-    });
-    setIsImportingToCloud(false);
-
-    if (result.ok && result.cloudOk) {
-      setCloudHasData(true);
-      localStorage.setItem(CLOUD_IMPORT_FLAG_KEY, "true");
-      addToast("Library imported to cloud.", "success");
-    }
+      if (result.ok && result.cloudOk) {
+        setCloudHasData(true);
+        localStorage.setItem(CLOUD_IMPORT_FLAG_KEY, "true");
+        addToast("Library imported to cloud.", "success");
+      }
+      dismissConfirm();
+    }, { confirmLabel: "Import" });
   }
 
   // ── MAL bulk import ───────────────────────────────────────────────────────
@@ -815,12 +825,14 @@ export default function PanelVaultApp() {
     setBulkSelectMode(false);
   }
 
-  async function bulkDelete() {
-    if (!window.confirm(`Delete ${selectedIds.size} series? This cannot be undone.`)) return;
-    const updated = series.filter((item) => !selectedIds.has(item.id));
-    await persistSeries(updated, { successMessage: `${selectedIds.size} series deleted.` });
-    setSelectedIds(new Set());
-    setBulkSelectMode(false);
+  function bulkDelete() {
+    showConfirm(`Delete ${selectedIds.size} series? This cannot be undone.`, async () => {
+      const updated = series.filter((item) => !selectedIds.has(item.id));
+      await persistSeries(updated, { successMessage: `${selectedIds.size} series deleted.` });
+      setSelectedIds(new Set());
+      setBulkSelectMode(false);
+      dismissConfirm();
+    }, { confirmLabel: "Delete", danger: true });
   }
 
   function exitBulkMode() {
@@ -867,9 +879,11 @@ export default function PanelVaultApp() {
   }
 
   function deleteList(id) {
-    if (!window.confirm("Delete this list?")) return;
-    saveListsToLocal(lists.filter((l) => l.id !== id));
-    if (activeListId === id) setActiveListId(null);
+    showConfirm("Delete this list?", () => {
+      saveListsToLocal(lists.filter((l) => l.id !== id));
+      if (activeListId === id) setActiveListId(null);
+      dismissConfirm();
+    }, { confirmLabel: "Delete", danger: true });
   }
 
   function toggleInList(listId, seriesId) {
@@ -1004,7 +1018,13 @@ export default function PanelVaultApp() {
   }
 
   async function handleClearAll() {
-    localStorage.clear();
+    [
+      STORAGE_KEY, LISTS_STORAGE_KEY, CLOUD_IMPORT_FLAG_KEY,
+      SETTINGS_KEY, ACTIVITY_KEY,
+      "panelvault_favorites", "panelvault_notes", "panelvault_weekly_goal",
+      "panelvault_last_update_check", "panelvault_last_known_progress",
+      "pv_install_dismissed",
+    ].forEach((k) => localStorage.removeItem(k));
     if (supabase) await supabase.auth.signOut();
     window.location.reload();
   }
@@ -1381,8 +1401,8 @@ ${anime.map(animeEntry).join("\n")}
           />
         </div>
 
-        {/* Right: category toggle + total + sign out */}
-        {!isMobile && (
+        {/* Right: desktop controls OR mobile lists button */}
+        {!isMobile ? (
           <div style={st.topbarRight}>
             <div style={st.catToggleGroup}>
               {MEDIA_CATEGORIES.map((cat) => (
@@ -1415,6 +1435,16 @@ ${anime.map(animeEntry).join("\n")}
               </>
             )}
           </div>
+        ) : (
+          <button
+            style={st.mobileMenuBtn}
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open lists"
+          >
+            <span style={st.burgerLine} />
+            <span style={st.burgerLine} />
+            <span style={st.burgerLine} />
+          </button>
         )}
       </header>
 
@@ -1618,6 +1648,7 @@ ${anime.map(animeEntry).join("\n")}
                             src={item.image}
                             alt={item.title}
                             style={st.coverImage}
+                            loading="lazy"
                             onError={(e) => {
                               e.currentTarget.style.display = "none";
                               if (e.currentTarget.nextSibling)
@@ -1754,7 +1785,9 @@ ${anime.map(animeEntry).join("\n")}
               badge: series.filter((s) => s.status === "reading" && (s.mediaCategory || "comics") === activeMediaCategory).length || 0 },
             { key: "discover", icon: "🔍", label: "Discover" },
             { key: "profile",  icon: "👤", label: "Account"  },
-          ].map((tab) => (
+          ].map((tab) => {
+            const effectiveTab = showDiscover ? "discover" : showProfile ? "profile" : activeBottomTab;
+            return (
             <button
               key={tab.key}
               onClick={() => {
@@ -1773,7 +1806,7 @@ ${anime.map(animeEntry).join("\n")}
               }}
               style={{
                 ...st.bottomNavBtn,
-                ...(activeBottomTab === tab.key ? st.bottomNavBtnActive : {}),
+                ...(effectiveTab === tab.key ? st.bottomNavBtnActive : {}),
               }}
             >
               <div style={{ position: "relative", display: "inline-flex" }}>
@@ -1784,7 +1817,8 @@ ${anime.map(animeEntry).join("\n")}
               </div>
               <span style={st.bottomNavLabel}>{tab.label}</span>
             </button>
-          ))}
+          );
+          })}
         </nav>
       )}
 
@@ -1837,7 +1871,13 @@ ${anime.map(animeEntry).join("\n")}
           selectedItem={selectedItem}
           onClose={() => setSelectedItem(null)}
           onSave={handleSaveDetails}
-          onDelete={deleteSeries}
+          onDelete={(id) => {
+            const title = series.find((s) => s.id === id)?.title || "this series";
+            showConfirm(`Delete "${title}"? This cannot be undone.`, () => {
+              dismissConfirm();
+              deleteSeries(id);
+            }, { confirmLabel: "Delete", danger: true });
+          }}
           lists={lists}
           onToggleInList={toggleInList}
           onCheckConflict={entryConflictsWithSeries}
@@ -1935,6 +1975,16 @@ ${anime.map(animeEntry).join("\n")}
       )}
 
       </Suspense>
+
+      {confirmDialog && (
+        <ConfirmModal
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          danger={confirmDialog.danger}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={dismissConfirm}
+        />
+      )}
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
@@ -2040,9 +2090,23 @@ const st = {
     background: "rgba(10,14,22,0.72)",
   },
   topbarMobile: {
-    gridTemplateColumns: "auto 1fr",
+    gridTemplateColumns: "auto 1fr auto",
     padding: "12px 14px",
     gap: 12,
+  },
+  mobileMenuBtn: {
+    width: 40, height: 40,
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.05)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    cursor: "pointer",
+    padding: 0,
+    flexShrink: 0,
   },
   topbarLeft: {
     position: "relative",

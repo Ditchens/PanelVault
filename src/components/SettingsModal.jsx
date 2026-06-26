@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import ConfirmModal from "./ConfirmModal";
 
 export const SETTINGS_KEY = "panelvault_settings";
 export const ACTIVITY_KEY  = "panelvault_activity";
@@ -23,6 +24,7 @@ function saveSettings(s) {
 export default function SettingsModal({ onClose, onSignOut, onClearActivity, onClearAll }) {
   const [settings, setSettings] = useState(loadSettings);
   const [activityCount, setActivityCount] = useState(0);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   useEffect(() => {
     try {
@@ -37,69 +39,95 @@ export default function SettingsModal({ onClose, onSignOut, onClearActivity, onC
   }
 
   function handleClearActivity() {
-    if (!window.confirm("Clear your reading activity log? This resets your streak.")) return;
-    localStorage.removeItem(ACTIVITY_KEY);
-    setActivityCount(0);
-    onClearActivity?.();
+    setConfirmDialog({
+      message: "Clear your reading activity log? This resets your streak.",
+      confirmLabel: "Clear",
+      danger: true,
+      onConfirm: () => {
+        localStorage.removeItem(ACTIVITY_KEY);
+        setActivityCount(0);
+        onClearActivity?.();
+        setConfirmDialog(null);
+      },
+    });
   }
 
   function handleClearAll() {
-    if (!window.confirm("Delete all local data and sign out? Your cloud library is safe.")) return;
-    onClearAll?.();
+    setConfirmDialog({
+      message: "Delete all local data and sign out? Your cloud library is safe.",
+      confirmLabel: "Delete & Sign Out",
+      danger: true,
+      onConfirm: () => {
+        setConfirmDialog(null);
+        onClearAll?.();
+      },
+    });
   }
 
   return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.card} onClick={(e) => e.stopPropagation()}>
-        <div style={s.header}>
-          <h2 style={s.heading}>Settings</h2>
-          <button onClick={onClose} style={s.closeBtn}>✕</button>
+    <>
+      <div style={s.overlay} onClick={onClose}>
+        <div style={s.card} onClick={(e) => e.stopPropagation()}>
+          <div style={s.header}>
+            <h2 style={s.heading}>Settings</h2>
+            <button onClick={onClose} style={s.closeBtn}>✕</button>
+          </div>
+
+          <Sect title="Preferences">
+            <Row label="Default category">
+              <select
+                value={settings.defaultMediaCategory}
+                onChange={(e) => update("defaultMediaCategory", e.target.value)}
+                style={s.select}
+              >
+                <option value="comics">Comics</option>
+                <option value="anime">Anime</option>
+              </select>
+            </Row>
+            <Row label="Default sort">
+              <select
+                value={settings.defaultSort}
+                onChange={(e) => update("defaultSort", e.target.value)}
+                style={s.select}
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="az">A–Z</option>
+                <option value="za">Z–A</option>
+              </select>
+            </Row>
+            <Row label="Auto-check updates daily" last>
+              <Toggle checked={settings.autoCheckUpdates} onChange={(v) => update("autoCheckUpdates", v)} />
+            </Row>
+          </Sect>
+
+          <Sect title="Account">
+            {onSignOut && (
+              <button onClick={onSignOut} style={s.actionBtn}>Sign Out</button>
+            )}
+          </Sect>
+
+          <Sect title="Danger Zone">
+            <button onClick={handleClearActivity} style={s.dangerBtn}>
+              Clear activity log ({activityCount} entries)
+            </button>
+            <button onClick={handleClearAll} style={{ ...s.dangerBtn, ...s.dangerBtnRed }}>
+              Clear all local data &amp; sign out
+            </button>
+          </Sect>
         </div>
-
-        <Sect title="Preferences">
-          <Row label="Default category">
-            <select
-              value={settings.defaultMediaCategory}
-              onChange={(e) => update("defaultMediaCategory", e.target.value)}
-              style={s.select}
-            >
-              <option value="comics">Comics</option>
-              <option value="anime">Anime</option>
-            </select>
-          </Row>
-          <Row label="Default sort">
-            <select
-              value={settings.defaultSort}
-              onChange={(e) => update("defaultSort", e.target.value)}
-              style={s.select}
-            >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="az">A–Z</option>
-              <option value="za">Z–A</option>
-            </select>
-          </Row>
-          <Row label="Auto-check updates daily" last>
-            <Toggle checked={settings.autoCheckUpdates} onChange={(v) => update("autoCheckUpdates", v)} />
-          </Row>
-        </Sect>
-
-        <Sect title="Account">
-          {onSignOut && (
-            <button onClick={onSignOut} style={s.actionBtn}>Sign Out</button>
-          )}
-        </Sect>
-
-        <Sect title="Danger Zone">
-          <button onClick={handleClearActivity} style={s.dangerBtn}>
-            Clear activity log ({activityCount} entries)
-          </button>
-          <button onClick={handleClearAll} style={{ ...s.dangerBtn, ...s.dangerBtnRed }}>
-            Clear all local data &amp; sign out
-          </button>
-        </Sect>
       </div>
-    </div>
+
+      {confirmDialog && (
+        <ConfirmModal
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          danger={confirmDialog.danger}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
+    </>
   );
 }
 
