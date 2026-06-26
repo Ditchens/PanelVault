@@ -103,10 +103,11 @@ export default function PanelVaultApp() {
   // ── Toasts ────────────────────────────────────────────────────────────────
   const [toasts, setToasts] = useState([]);
 
-  function addToast(message, type = "info") {
+  function addToast(message, type = "info", duration = 3500) {
     const id = Date.now() + Math.random();
     setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
+    if (duration > 0) setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), duration);
+    return id;
   }
 
   function dismissToast(id) {
@@ -369,7 +370,7 @@ export default function PanelVaultApp() {
   }, [series.length > 0, !!currentUser]);
 
   // Reactively fetch covers whenever series without images exist
-  const missingCoverCount = series.filter((s) => !s.image).length;
+  const missingCoverCount = series.filter((s) => !s.image?.trim()).length;
   useEffect(() => {
     if (!missingCoverCount || !currentUser || isFetchingCovers) return;
     autoFetchMissingCovers();
@@ -597,10 +598,10 @@ export default function PanelVaultApp() {
   }
 
   async function autoFetchMissingCovers() {
-    const missing = series.filter((s) => !s.image);
+    const missing = series.filter((s) => !s.image?.trim());
     if (!missing.length) return;
     setIsFetchingCovers(true);
-    addToast(`Fetching covers for ${missing.length} series…`, "info");
+    const loadingId = addToast(`Fetching covers for ${missing.length} series…`, "info", 0);
 
     // Accumulating working copy so each batch save includes all previous finds
     let current = [...series];
@@ -623,10 +624,11 @@ export default function PanelVaultApp() {
       if (i + BATCH < missing.length) await new Promise((r) => setTimeout(r, 600));
     }
     setIsFetchingCovers(false);
+    dismissToast(loadingId);
     if (totalFound > 0) {
       addToast(`Found ${totalFound} cover${totalFound === 1 ? "" : "s"}!`, "success");
-    } else if (missing.length > 0) {
-      addToast("Couldn't find covers automatically. Open a series and paste a cover URL manually.", "info");
+    } else {
+      addToast("Couldn't find covers automatically — try adding them from each series' detail view.", "info");
     }
   }
 
@@ -1394,6 +1396,9 @@ ${anime.map(animeEntry).join("\n")}
             setActiveListId(null);
             setActiveBottomTab("library");
           }}
+          onRefreshCovers={autoFetchMissingCovers}
+          isFetchingCovers={isFetchingCovers}
+          missingCoverCount={missingCoverCount}
         />
       ) : (<>
 

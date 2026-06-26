@@ -3,7 +3,7 @@ import { ACTIVITY_KEY } from "./SettingsModal";
 
 const GOAL_KEY = "panelvault_weekly_goal";
 
-export default function Dashboard({ series, profile, onOpenSeries, onDiscover, onImport, onViewLibrary }) {
+export default function Dashboard({ series, profile, onOpenSeries, onDiscover, onImport, onViewLibrary, onRefreshCovers, isFetchingCovers, missingCoverCount }) {
   const activityLog = useMemo(() => {
     try { return JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]"); } catch { return []; }
   }, [series]); // refresh when series changes (proxy for user action)
@@ -84,6 +84,26 @@ export default function Dashboard({ series, profile, onOpenSeries, onDiscover, o
           <div style={s.pill}>{totalFinished} finished</div>
         </div>
       </div>
+
+      {/* Missing covers banner */}
+      {missingCoverCount > 0 && onRefreshCovers && (
+        <button
+          onClick={onRefreshCovers}
+          disabled={isFetchingCovers}
+          style={s.coverBanner}
+        >
+          <span style={{ fontSize: "1.3rem" }}>🖼</span>
+          <div style={{ flex: 1, textAlign: "left" }}>
+            <div style={{ fontWeight: 800, fontSize: "0.9rem", color: "#f1f5f9" }}>
+              {isFetchingCovers ? "Fetching covers…" : `${missingCoverCount} series missing covers`}
+            </div>
+            <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: 2 }}>
+              {isFetchingCovers ? "This may take a minute" : "Tap to fetch automatically"}
+            </div>
+          </div>
+          {!isFetchingCovers && <span style={{ color: "#818cf8", fontSize: "1rem" }}>→</span>}
+        </button>
+      )}
 
       {/* Weekly Goal */}
       <GoalCard weekProgress={weekProgress} />
@@ -468,6 +488,18 @@ const s = {
     color: "#64748b",
     fontSize: "0.78rem",
     fontWeight: 500,
+  },
+  coverBanner: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    background: "rgba(99,102,241,0.08)",
+    border: "1px solid rgba(99,102,241,0.25)",
+    borderRadius: 16,
+    padding: "14px 16px",
+    cursor: "pointer",
+    width: "100%",
+    textAlign: "left",
   },
   goalEmpty: {
     background: "rgba(99,102,241,0.08)",
