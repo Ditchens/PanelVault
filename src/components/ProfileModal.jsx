@@ -7,7 +7,7 @@ import { supabase } from "../lib/supabase";
 //   onSave        — (updatedProfile) => void
 //   onClose       — () => void
 //   isSetup       — boolean  true = first-time setup (no close until saved)
-export default function ProfileModal({ profile, currentUser, onSave, onClose, onSignOut, isSetup = false }) {
+export default function ProfileModal({ profile, currentUser, onSave, onClose, onSignOut, isSetup = false, onRefreshCovers, isFetchingCovers, missingCoverCount }) {
   const [username, setUsername] = useState(profile?.username || "");
   const [bio, setBio]           = useState(profile?.bio || "");
   const [isPublic, setIsPublic] = useState(profile?.is_public ?? false);
@@ -140,6 +140,26 @@ export default function ProfileModal({ profile, currentUser, onSave, onClose, on
         </div>
 
         <p style={s.emailNote}>Signed in as {currentUser?.email}</p>
+
+        {!isSetup && onRefreshCovers && (
+          <button
+            onClick={onRefreshCovers}
+            disabled={isFetchingCovers}
+            style={{
+              ...s.signOutBtn,
+              background: "rgba(99,102,241,0.12)",
+              color: isFetchingCovers ? "#64748b" : "#818cf8",
+              borderColor: "rgba(99,102,241,0.2)",
+              cursor: isFetchingCovers ? "not-allowed" : "pointer",
+            }}
+          >
+            {isFetchingCovers
+              ? "Fetching covers…"
+              : missingCoverCount > 0
+              ? `🖼 Fetch Missing Covers (${missingCoverCount})`
+              : "🖼 Covers Up to Date"}
+          </button>
+        )}
 
         {!isSetup && onSignOut && (
           <button onClick={onSignOut} style={s.signOutBtn}>Sign Out</button>

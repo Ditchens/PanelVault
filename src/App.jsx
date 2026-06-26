@@ -1830,6 +1830,9 @@ ${anime.map(animeEntry).join("\n")}
           onClose={() => setShowProfile(false)}
           onSignOut={handleSignOut}
           isSetup={profileSetupNeeded && !showProfile}
+          onRefreshCovers={autoFetchMissingCovers}
+          isFetchingCovers={isFetchingCovers}
+          missingCoverCount={missingCoverCount}
         />
       )}
 
