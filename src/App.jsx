@@ -600,10 +600,12 @@ export default function PanelVaultApp() {
     const missing = series.filter((s) => !s.image);
     if (!missing.length) return;
     setIsFetchingCovers(true);
+    addToast(`Fetching covers for ${missing.length} series…`, "info");
 
     // Accumulating working copy so each batch save includes all previous finds
     let current = [...series];
     const BATCH = 4;
+    let totalFound = 0;
 
     for (let i = 0; i < missing.length; i += BATCH) {
       const batch = missing.slice(i, i + BATCH);
@@ -614,13 +616,18 @@ export default function PanelVaultApp() {
       batch.forEach((s, idx) => {
         if (results[idx]) {
           const pos = current.findIndex((c) => c.id === s.id);
-          if (pos >= 0) { current[pos] = { ...current[pos], image: results[idx] }; anyFound = true; }
+          if (pos >= 0) { current[pos] = { ...current[pos], image: results[idx] }; anyFound = true; totalFound++; }
         }
       });
       if (anyFound) await persistSeries([...current], { successMessage: "" });
       if (i + BATCH < missing.length) await new Promise((r) => setTimeout(r, 600));
     }
     setIsFetchingCovers(false);
+    if (totalFound > 0) {
+      addToast(`Found ${totalFound} cover${totalFound === 1 ? "" : "s"}!`, "success");
+    } else if (missing.length > 0) {
+      addToast("Couldn't find covers automatically. Open a series and paste a cover URL manually.", "info");
+    }
   }
 
   // ── Series CRUD ───────────────────────────────────────────────────────────

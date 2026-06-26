@@ -1,4 +1,4 @@
-const CACHE = "panelvault-v3";
+const CACHE = "panelvault-v4";
 // Never precache index.html — Vite bundles have content hashes so the HTML
 // must always be fetched fresh or the old HTML references the old JS filename.
 const PRECACHE = ["/manifest.json", "/icon.svg"];
@@ -19,12 +19,20 @@ self.addEventListener("install", (e) => {
 });
 
 self.addEventListener("activate", (e) => {
+  // Claim clients first so we can navigate them, then clean old caches,
+  // then force-reload every open window. This breaks the iOS PWA stale-JS
+  // cycle even when the old page has no controllerchange listener.
   e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    )
+    self.clients.claim()
+      .then(() => caches.keys())
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+      )
+      .then(() => self.clients.matchAll({ type: "window", includeUncontrolled: true }))
+      .then((clients) => {
+        clients.forEach((client) => client.navigate(client.url));
+      })
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (e) => {
