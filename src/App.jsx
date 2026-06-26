@@ -554,12 +554,29 @@ export default function PanelVaultApp() {
   // ── Cover fetching ────────────────────────────────────────────────────────
 
   async function fetchCover(seriesTitle, mediaCategory = "comics") {
-    // Anime → Jikan/MAL
-    if (mediaCategory === "anime") {
+    const isAnime = mediaCategory === "anime";
+
+    // 1. AniList — primary source, no rate limits, great coverage
+    try {
+      const res = await fetch("https://graphql.anilist.co", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          query: `query($s:String,$t:MediaType){Media(search:$s,type:$t){coverImage{large}}}`,
+          variables: { s: seriesTitle, t: isAnime ? "ANIME" : "MANGA" },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const url = data?.data?.Media?.coverImage?.large;
+        if (url) return url;
+      }
+    } catch {}
+
+    if (isAnime) {
+      // 2. Jikan anime fallback
       try {
-        const res = await fetch(
-          `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(seriesTitle)}&limit=1`
-        );
+        const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(seriesTitle)}&limit=1`);
         const data = await res.json();
         return data?.data?.[0]?.images?.jpg?.large_image_url
           || data?.data?.[0]?.images?.jpg?.image_url
@@ -567,7 +584,7 @@ export default function PanelVaultApp() {
       } catch { return ""; }
     }
 
-    // Comics → MangaDex single call with cover_art included
+    // 2. MangaDex — single call with cover_art included
     try {
       const searchRes = await fetch(
         `https://api.mangadex.org/manga?title=${encodeURIComponent(seriesTitle)}&limit=5` +
@@ -578,18 +595,14 @@ export default function PanelVaultApp() {
         for (const manga of (searchData?.data || [])) {
           const coverRel = (manga.relationships || []).find((r) => r.type === "cover_art");
           const filename = coverRel?.attributes?.fileName;
-          if (filename) {
-            return `https://uploads.mangadex.org/covers/${manga.id}/${filename}.512.jpg`;
-          }
+          if (filename) return `https://uploads.mangadex.org/covers/${manga.id}/${filename}.512.jpg`;
         }
       }
     } catch {}
 
-    // Fallback: Jikan manga
+    // 3. Jikan manga final fallback
     try {
-      const res = await fetch(
-        `https://api.jikan.moe/v4/manga?q=${encodeURIComponent(seriesTitle)}&limit=1`
-      );
+      const res = await fetch(`https://api.jikan.moe/v4/manga?q=${encodeURIComponent(seriesTitle)}&limit=1`);
       const data = await res.json();
       return data?.data?.[0]?.images?.jpg?.large_image_url
         || data?.data?.[0]?.images?.jpg?.image_url
@@ -605,7 +618,7 @@ export default function PanelVaultApp() {
 
     // Accumulating working copy so each batch save includes all previous finds
     let current = [...series];
-    const BATCH = 4;
+    const BATCH = 2;
     let totalFound = 0;
 
     for (let i = 0; i < missing.length; i += BATCH) {
