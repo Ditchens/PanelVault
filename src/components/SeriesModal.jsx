@@ -69,6 +69,11 @@ export default function SeriesModal({
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef(null);
 
+  // Cover search
+  const [coverQuery, setCoverQuery] = useState("");
+  const [coverResults, setCoverResults] = useState([]);
+  const [isCoverSearching, setIsCoverSearching] = useState(false);
+
   // Sync edit state whenever the viewed item changes
   useEffect(() => {
     if (!selectedItem) return;
@@ -89,6 +94,8 @@ export default function SeriesModal({
     setLocalProgress(null);
     setLocalStatus(null);
     setSaveError("");
+    setCoverQuery(selectedItem.title || "");
+    setCoverResults([]);
   }, [selectedItem?.id]);
 
   // Keyboard shortcuts
@@ -202,6 +209,38 @@ export default function SeriesModal({
     const { data } = supabase.storage.from("covers").getPublicUrl(path);
     setEditImage(data.publicUrl);
     setIsUploading(false);
+  }
+
+  async function searchCovers() {
+    if (!coverQuery.trim()) return;
+    setIsCoverSearching(true);
+    setCoverResults([]);
+    try {
+      const res = await fetch(
+        `https://api.mangadex.org/manga?title=${encodeURIComponent(coverQuery.trim())}&limit=12` +
+        `&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const results = [];
+        for (const manga of (data?.data || [])) {
+          const coverRel = (manga.relationships || []).find((r) => r.type === "cover_art");
+          const filename = coverRel?.attributes?.fileName;
+          if (filename) {
+            const title = manga.attributes?.title?.en
+              || Object.values(manga.attributes?.title || {})[0]
+              || "Unknown";
+            results.push({
+              id: manga.id,
+              title,
+              imageUrl: `https://uploads.mangadex.org/covers/${manga.id}/${filename}.256.jpg`,
+            });
+          }
+        }
+        setCoverResults(results);
+      }
+    } catch {}
+    setIsCoverSearching(false);
   }
 
   function toggleTag(tag) {
@@ -515,6 +554,42 @@ export default function SeriesModal({
               placeholder="Paste a cover URL…"
               style={s.input}
             />
+
+            {/* MangaDex cover search */}
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <input
+                value={coverQuery}
+                onChange={(e) => setCoverQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") searchCovers(); }}
+                placeholder="Search MangaDex for cover…"
+                style={{ ...s.input, flex: 1, marginTop: 0, padding: "9px 12px", fontSize: "0.88rem" }}
+              />
+              <button
+                type="button"
+                onClick={searchCovers}
+                disabled={isCoverSearching}
+                style={s.searchCoverBtn}
+              >
+                {isCoverSearching ? "…" : "Search"}
+              </button>
+            </div>
+            {coverResults.length > 0 && (
+              <div style={s.coverResultsRow}>
+                {coverResults.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => { setEditImage(r.imageUrl.replace(".256.jpg", ".512.jpg")); setCoverResults([]); }}
+                    style={s.coverThumb}
+                    title={r.title}
+                  >
+                    <img src={r.imageUrl} alt={r.title} style={s.coverThumbImg} />
+                    <span style={s.coverThumbTitle}>{r.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
               <input
                 ref={fileInputRef}
@@ -973,6 +1048,56 @@ const s = {
     padding: "11px 14px",
     fontWeight: 700,
     cursor: "pointer",
+  },
+  searchCoverBtn: {
+    background: "rgba(99,102,241,0.15)",
+    border: "1px solid rgba(99,102,241,0.3)",
+    borderRadius: 10,
+    color: "#a5b4fc",
+    fontSize: "0.88rem",
+    fontWeight: 700,
+    padding: "9px 14px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
+  },
+  coverResultsRow: {
+    display: "flex",
+    gap: 8,
+    overflowX: "auto",
+    paddingBottom: 6,
+    marginTop: 8,
+    scrollbarWidth: "none",
+  },
+  coverThumb: {
+    flexShrink: 0,
+    width: 88,
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    padding: 4,
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  coverThumbImg: {
+    width: "100%",
+    aspectRatio: "2/3",
+    objectFit: "cover",
+    borderRadius: 7,
+    display: "block",
+  },
+  coverThumbTitle: {
+    fontSize: "0.62rem",
+    color: "#94a3b8",
+    fontWeight: 600,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    lineHeight: 1.3,
+    textAlign: "left",
   },
   uploadBtn: {
     background: "rgba(99,102,241,0.15)",
